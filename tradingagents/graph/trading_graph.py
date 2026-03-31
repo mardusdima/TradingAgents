@@ -81,13 +81,13 @@ class TradingAgentsGraph:
         deep_client = create_llm_client(
             provider=self.config["llm_provider"],
             model=self.config["deep_think_llm"],
-            base_url=self.config.get("backend_url"),
+            base_url=self._get_provider_base_url(),
             **llm_kwargs,
         )
         quick_client = create_llm_client(
             provider=self.config["llm_provider"],
             model=self.config["quick_think_llm"],
-            base_url=self.config.get("backend_url"),
+            base_url=self._get_provider_base_url(),
             **llm_kwargs,
         )
 
@@ -154,6 +154,17 @@ class TradingAgentsGraph:
                 kwargs["effort"] = effort
 
         return kwargs
+
+    def _get_provider_base_url(self) -> Optional[str]:
+        """Return the configured base URL when the provider supports it cleanly.
+
+        Gemini works more reliably when ChatGoogleGenerativeAI uses its own
+        default endpoint handling instead of a manually injected base URL.
+        """
+        provider = self.config.get("llm_provider", "").lower()
+        if provider == "google":
+            return None
+        return self.config.get("backend_url")
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create tool nodes for different data sources using abstract methods."""
