@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Run {{ detail.summary.run_id }}{% endblock %}
+{% block content %}
+<div class="grid two">
+    <section class="panel">
+        <h2>{{ detail.summary.ticker }} · {{ detail.summary.analysis_date }}</h2>
+        <div
+            id="status-fragment"
+            hx-get="/runs/{{ detail.summary.run_id }}/fragments/status"
+            hx-trigger="load, every 2s"
+            hx-swap="innerHTML"
+        >
+            {% include "fragments/status.html" %}
+        </div>
+        <div class="actions" style="margin: 18px 0;">
+            <a class="button" href="/runs/{{ detail.summary.run_id }}/download">Download Report</a>
+            <a class="button secondary" href="/runs/{{ detail.summary.run_id }}/rerun">Run Again</a>
+            <a class="button secondary" href="/history">History</a>
+        </div>
+        <div
+            id="sections-fragment"
+            hx-get="/runs/{{ detail.summary.run_id }}/fragments/sections"
+            hx-trigger="load, every 2s"
+            hx-swap="innerHTML"
+        >
+            {% include "fragments/sections.html" %}
+        </div>
+    </section>
+
+    <aside class="panel soft">
+        <h3>Stats</h3>
+        <div
+            id="stats-fragment"
+            hx-get="/runs/{{ detail.summary.run_id }}/fragments/stats"
+            hx-trigger="load, every 2s"
+            hx-swap="innerHTML"
+        >
+            {% include "fragments/stats.html" %}
+        </div>
+        <h3 style="margin-top: 22px;">Event Log</h3>
+        <div
+            id="events-fragment"
+            hx-get="/runs/{{ detail.summary.run_id }}/fragments/events"
+            hx-trigger="load, every 2s"
+            hx-swap="innerHTML"
+        >
+            {% include "fragments/events.html" %}
+        </div>
+    </aside>
+</div>
+{% endblock %}

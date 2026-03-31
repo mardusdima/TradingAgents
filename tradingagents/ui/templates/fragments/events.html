@@ -1,0 +1,11 @@
+<div class="stack">
+    {% for event in detail.events[-10:] %}
+        <div>
+            <div class="meta">{{ event.created_at }} · {{ event.message_type or event.event_type }}</div>
+            <pre>{{ event.content }}</pre>
+        </div>
+    {% endfor %}
+    {% if not detail.events %}
+        <p class="meta">No events persisted yet.</p>
+    {% endif %}
+</div>

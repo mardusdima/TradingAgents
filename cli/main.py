@@ -1,6 +1,7 @@
 from typing import Optional
 import datetime
 import typer
+import uvicorn
 from pathlib import Path
 from functools import wraps
 from rich.console import Console
@@ -23,12 +24,14 @@ from rich import box
 from rich.align import Align
 from rich.rule import Rule
 
-from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.app.backend import GraphAnalysisBackend
+from tradingagents.app.history import AnalysisHistoryRepository
+from tradingagents.app.models import AnalysisRequest
+from tradingagents.app.service import AnalysisRunService
 from tradingagents.default_config import DEFAULT_CONFIG
 from cli.models import AnalystType
 from cli.utils import *
 from cli.announcements import fetch_announcements, display_announcements
-from cli.stats_handler import StatsCallbackHandler
 
 console = Console()
 
@@ -925,47 +928,69 @@ def format_tool_args(args, max_length=80) -> str:
         return result[:max_length - 3] + "..."
     return result
 
+
+def build_analysis_request(selections) -> AnalysisRequest:
+    selected_set = {analyst.value for analyst in selections["analysts"]}
+    selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
+    return AnalysisRequest(
+        ticker=selections["ticker"],
+        analysis_date=selections["analysis_date"],
+        analysts=selected_analyst_keys,
+        research_depth=selections["research_depth"],
+        llm_provider=selections["llm_provider"],
+        backend_url=selections["backend_url"],
+        shallow_thinker=selections["shallow_thinker"],
+        deep_thinker=selections["deep_thinker"],
+        google_thinking_level=selections.get("google_thinking_level"),
+        openai_reasoning_effort=selections.get("openai_reasoning_effort"),
+        anthropic_effort=selections.get("anthropic_effort"),
+        output_language=selections.get("output_language", "English"),
+    )
+
+
+def detail_to_final_state(detail):
+    return {
+        "market_report": detail.sections.get("market_report", ""),
+        "sentiment_report": detail.sections.get("sentiment_report", ""),
+        "news_report": detail.sections.get("news_report", ""),
+        "fundamentals_report": detail.sections.get("fundamentals_report", ""),
+        "investment_debate_state": {
+            "judge_decision": detail.sections.get("investment_plan", ""),
+        },
+        "trader_investment_plan": detail.sections.get("trader_investment_plan", ""),
+        "risk_debate_state": {
+            "judge_decision": detail.sections.get("final_trade_decision", ""),
+        },
+        "final_trade_decision": detail.sections.get("final_trade_decision", ""),
+    }
+
+
+def start_ui_server(host: str = "127.0.0.1", port: int = 8000, reload: bool = False):
+    uvicorn.run(
+        "tradingagents.ui.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
 def run_analysis():
     # First get all user selections
     selections = get_user_selections()
-
-    # Create config with selected research depth
-    config = DEFAULT_CONFIG.copy()
-    config["max_debate_rounds"] = selections["research_depth"]
-    config["max_risk_discuss_rounds"] = selections["research_depth"]
-    config["quick_think_llm"] = selections["shallow_thinker"]
-    config["deep_think_llm"] = selections["deep_thinker"]
-    config["backend_url"] = selections["backend_url"]
-    config["llm_provider"] = selections["llm_provider"].lower()
-    # Provider-specific thinking configuration
-    config["google_thinking_level"] = selections.get("google_thinking_level")
-    config["openai_reasoning_effort"] = selections.get("openai_reasoning_effort")
-    config["anthropic_effort"] = selections.get("anthropic_effort")
-    config["output_language"] = selections.get("output_language", "English")
-
-    # Create stats callback handler for tracking LLM/tool calls
-    stats_handler = StatsCallbackHandler()
-
-    # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
-    selected_set = {analyst.value for analyst in selections["analysts"]}
-    selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
-
-    # Initialize the graph with callbacks bound to LLMs
-    graph = TradingAgentsGraph(
-        selected_analyst_keys,
-        config=config,
-        debug=True,
-        callbacks=[stats_handler],
-    )
+    request = build_analysis_request(selections)
+    history_repository = AnalysisHistoryRepository(Path(DEFAULT_CONFIG["results_dir"]))
+    backend = GraphAnalysisBackend(request)
+    service = AnalysisRunService(history_repository, backend_factory=lambda _request: backend)
+    created_run = service.create_pending_run(request, source="cli")
+    stats_handler = backend.stats_handler
 
     # Initialize message buffer with selected analysts
-    message_buffer.init_for_analysis(selected_analyst_keys)
+    message_buffer.init_for_analysis(request.analysts)
 
     # Track start time for elapsed display
     start_time = time.time()
 
     # Create result directory
-    results_dir = Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
+    results_dir = Path(DEFAULT_CONFIG["results_dir"]) / selections["ticker"] / selections["analysis_date"]
     results_dir.mkdir(parents=True, exist_ok=True)
     report_dir = results_dir / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1056,7 @@ def run_analysis():
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
         # Update agent status to in_progress for the first analyst
-        first_analyst = f"{selections['analysts'][0].value.capitalize()} Analyst"
+        first_analyst = ANALYST_AGENT_NAMES[request.analysts[0]]
         message_buffer.update_agent_status(first_analyst, "in_progress")
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
@@ -1041,19 +1066,13 @@ def run_analysis():
         )
         update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
-        # Initialize state and get graph args with callbacks
-        init_agent_state = graph.propagator.create_initial_state(
-            selections["ticker"], selections["analysis_date"]
-        )
-        # Pass callbacks to graph config for tool execution tracking
-        # (LLM tracking is handled separately via LLM constructor)
-        args = graph.propagator.get_graph_args(callbacks=[stats_handler])
+        latest_chunk = {}
 
-        # Stream the analysis
-        trace = []
-        for chunk in graph.graph.stream(init_agent_state, **args):
+        def handle_chunk(chunk):
+            nonlocal latest_chunk
+            latest_chunk = chunk
             # Process messages if present (skip duplicates via message ID)
-            if len(chunk["messages"]) > 0:
+            if len(chunk.get("messages", [])) > 0:
                 last_message = chunk["messages"][-1]
                 msg_id = getattr(last_message, "id", None)
 
@@ -1152,24 +1171,30 @@ def run_analysis():
             # Update the display
             update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-            trace.append(chunk)
-
-        # Get final state and decision
-        final_state = trace[-1]
-        decision = graph.process_signal(final_state["final_trade_decision"])
+        final_detail = service.execute_run(created_run.run_id, request, on_chunk=handle_chunk)
+        final_state = latest_chunk or detail_to_final_state(final_detail)
+        decision = final_detail.summary.rating
 
         # Update all agent statuses to completed
         for agent in message_buffer.agent_status:
             message_buffer.update_agent_status(agent, "completed")
 
-        message_buffer.add_message(
-            "System", f"Completed analysis for {selections['analysis_date']}"
-        )
+        if final_detail.summary.status == "completed":
+            message_buffer.add_message(
+                "System", f"Completed analysis for {selections['analysis_date']}"
+            )
+        else:
+            message_buffer.add_message(
+                "System",
+                f"Analysis failed for {selections['analysis_date']}: {final_detail.summary.error_message}",
+            )
 
         # Update final report sections
         for section in message_buffer.report_sections.keys():
             if section in final_state:
                 message_buffer.update_report_section(section, final_state[section])
+            elif section in final_detail.sections:
+                message_buffer.update_report_section(section, final_detail.sections[section])
 
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
@@ -1202,6 +1227,15 @@ def run_analysis():
 @app.command()
 def analyze():
     run_analysis()
+
+
+@app.command()
+def ui(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    reload: bool = False,
+):
+    start_ui_server(host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":

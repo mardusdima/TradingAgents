@@ -1,0 +1,11 @@
+<div class="stack">
+    {% for key, content in detail.sections.items() %}
+        <section>
+            <h3>{{ key }}</h3>
+            <pre>{{ content }}</pre>
+        </section>
+    {% endfor %}
+    {% if not detail.sections %}
+        <p class="meta">No sections persisted yet.</p>
+    {% endif %}
+</div>

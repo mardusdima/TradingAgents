@@ -35,8 +35,14 @@ class GoogleClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
-        # Unified api_key maps to provider-specific google_api_key
-        google_api_key = self.kwargs.get("api_key") or self.kwargs.get("google_api_key")
+        # Unified api_key maps to provider-specific google_api_key.
+        # Fall back to GOOGLE_API_KEY from the environment so .env-loaded
+        # credentials work without additional wiring in the app config.
+        google_api_key = (
+            self.kwargs.get("api_key")
+            or self.kwargs.get("google_api_key")
+            or os.environ.get("GOOGLE_API_KEY")
+        )
         if google_api_key:
             llm_kwargs["google_api_key"] = google_api_key
 
