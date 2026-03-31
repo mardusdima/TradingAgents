@@ -138,6 +138,32 @@ Alternatively, copy `.env.example` to `.env` and fill in your keys:
 cp .env.example .env
 ```
 
+### Docker
+
+Build the image:
+```bash
+docker build -t tradingagents .
+```
+
+Run the interactive CLI with your API keys from `.env`:
+```bash
+docker run --rm -it --env-file .env \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/eval_results:/app/eval_results" \
+  -v "$(pwd)/results:/app/results" \
+  tradingagents
+```
+
+If you prefer Docker Compose:
+```bash
+docker compose run --rm tradingagents
+```
+
+Notes:
+- Use `-it` for the interactive terminal UI.
+- Mounting `reports`, `eval_results`, and `results` keeps generated output on your host machine.
+- You can override the default command, for example: `docker run --rm --env-file .env tradingagents python main.py`
+
 ### CLI Usage
 
 Launch the interactive CLI:
@@ -166,6 +192,8 @@ An interface will appear showing results as they load, letting you track the age
 ### Implementation Details
 
 We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, OpenRouter, and Ollama.
+
+For a codebase-driven architecture walkthrough with Mermaid diagrams, see [docs/architecture.md](docs/architecture.md).
 
 ### Python Usage
 
