@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}TradingAgents UI{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <style>
+        :root {
+            --bg: #f3efe6;
+            --panel: #fffaf0;
+            --ink: #1f2a2c;
+            --muted: #5c6a6e;
+            --accent: #0f766e;
+            --accent-soft: #d7efe6;
+            --warn: #9f1239;
+            --border: #d8d0c2;
+            --shadow: 0 18px 50px rgba(31, 42, 44, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Iowan Old Style", "Palatino Linotype", serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 30%),
+                radial-gradient(circle at right center, rgba(159, 18, 57, 0.1), transparent 24%),
+                linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+        }
+
+        main {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 32px 20px 56px;
+        }
+
+        h1, h2, h3 { margin-top: 0; }
+        a { color: var(--accent); text-decoration: none; }
+
+        .hero {
+            background: linear-gradient(135deg, rgba(15, 118, 110, 0.95), rgba(27, 94, 94, 0.88));
+            color: white;
+            border-radius: 28px;
+            padding: 28px;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .hero p { color: rgba(255,255,255,0.82); max-width: 760px; }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .grid.two {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 22px;
+            box-shadow: var(--shadow);
+        }
+
+        .panel.soft { background: rgba(255, 250, 240, 0.72); }
+
+        .announce {
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .stack > * + * { margin-top: 14px; }
+
+        .label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--muted);
+        }
+
+        input, select {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            font: inherit;
+            background: white;
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .checkbox-card {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: white;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .button {
+            appearance: none;
+            border: none;
+            border-radius: 999px;
+            padding: 11px 18px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--accent);
+            color: white;
+        }
+
+        .button.secondary {
+            background: white;
+            color: var(--ink);
+            border: 1px solid var(--border);
+        }
+
+        .meta, .status-chip {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .status-chip strong { color: var(--ink); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(92, 106, 110, 0.14);
+            vertical-align: top;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: white;
+            border-radius: 16px;
+            padding: 14px;
+            border: 1px solid var(--border);
+        }
+
+        .error {
+            color: var(--warn);
+            font-weight: 700;
+        }
+
+        .status-box {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        @media (max-width: 900px) {
+            .grid.two,
+            .status-box {
+                grid-template-columns: 1fr;
+            }
+
+            .checkbox-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <section class="hero">
+        <h1>TradingAgents UI</h1>
+        <p>Run analyses, monitor live progress, and revisit prior decisions from a single local workspace.</p>
+        {% if announcements %}
+            <div class="announce">
+                {% for announcement in announcements %}
+                    <div>{{ announcement|safe }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </section>
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>
