@@ -12,4 +12,19 @@ services:
       - ./reports:/app/reports
       - ./eval_results:/app/eval_results
       - ./results:/app/results
-    command: ["tradingagents"]
+    command: ["tradingagents", "analyze"]
+
+  tradingagents-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - ./reports:/app/reports
+      - ./eval_results:/app/eval_results
+      - ./results:/app/results
+    ports:
+      - "8000:8000"
+    command: ["tradingagents", "ui", "--host", "0.0.0.0", "--port", "8000"]

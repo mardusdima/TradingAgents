@@ -145,23 +145,40 @@ Build the image:
 docker build -t tradingagents .
 ```
 
-Run the interactive CLI with your API keys from `.env`:
+Run the interactive agents CLI with your API keys from `.env`:
 ```bash
 docker run --rm -it --env-file .env \
   -v "$(pwd)/reports:/app/reports" \
   -v "$(pwd)/eval_results:/app/eval_results" \
   -v "$(pwd)/results:/app/results" \
-  tradingagents
+  tradingagents tradingagents analyze
+```
+
+Run the web UI container:
+```bash
+docker run --rm --env-file .env \
+  -p 8000:8000 \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/eval_results:/app/eval_results" \
+  -v "$(pwd)/results:/app/results" \
+  tradingagents tradingagents ui --host 0.0.0.0 --port 8000
 ```
 
 If you prefer Docker Compose:
 ```bash
 docker compose run --rm tradingagents
+docker compose up tradingagents-web
+```
+
+Run both services together:
+```bash
+docker compose up
 ```
 
 Notes:
 - Use `-it` for the interactive terminal UI.
-- Mounting `reports`, `eval_results`, and `results` keeps generated output on your host machine.
+- The agents container and web UI container share the mounted `reports`, `eval_results`, and `results` directories.
+- The web UI is available at `http://localhost:8000` when `tradingagents-web` is running.
 - You can override the default command, for example: `docker run --rm --env-file .env tradingagents python main.py`
 
 ### CLI Usage

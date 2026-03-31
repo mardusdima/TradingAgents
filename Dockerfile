@@ -11,4 +11,6 @@ COPY . .
 RUN pip install --upgrade pip && \
     pip install .
 
+EXPOSE 8000
+
 CMD ["tradingagents"]
