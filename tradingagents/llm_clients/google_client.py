@@ -28,9 +28,6 @@ class GoogleClient(BaseLLMClient):
         self.warn_if_unknown_model()
         llm_kwargs = {"model": self.model}
 
-        if self.base_url:
-            llm_kwargs["base_url"] = self.base_url
-
         for key in ("timeout", "max_retries", "callbacks", "http_client", "http_async_client"):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
@@ -13,6 +14,7 @@ from tradingagents.runtime.options import (
 from tradingagents.runtime.schemas import AnalystKey, ProviderName, RunRequest
 
 SUPPORTED_RESEARCH_DEPTHS = {option.value for option in RESEARCH_DEPTH_OPTIONS}
+TICKER_PATTERN = re.compile(r"^[A-Z0-9^][A-Z0-9.\-^=/]*$")
 GOOGLE_THINKING_LEVEL_FIELD = "google_thinking_level"
 OPENAI_REASONING_EFFORT_FIELD = "openai_reasoning_effort"
 ANTHROPIC_EFFORT_FIELD = "anthropic_effort"
@@ -38,6 +40,16 @@ def normalize_ticker_symbol(ticker: object) -> str:
     if not normalized:
         raise RunRequestValidationError(
             [ValidationIssue("ticker", "Please enter a valid ticker symbol.")]
+        )
+    try:
+        normalized.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise RunRequestValidationError(
+            [ValidationIssue("ticker", "Ticker contains invalid characters.")]
+        ) from exc
+    if not TICKER_PATTERN.match(normalized):
+        raise RunRequestValidationError(
+            [ValidationIssue("ticker", "Ticker contains unsupported characters.")]
         )
     return normalized
 

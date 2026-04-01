@@ -94,6 +94,7 @@ class AgentStatusSnapshot:
 @dataclass
 class SessionMessage:
     timestamp: Optional[str] = None
+    message_type: str = "System"
     source: Optional[str] = None
     content: Optional[str] = None
     event_type: EventType = EventType.MESSAGE
@@ -106,6 +107,14 @@ class ToolCallSnapshot:
     timestamp: Optional[str] = None
     source: Optional[str] = None
     event_type: EventType = EventType.TOOL_CALL
+
+
+@dataclass
+class SessionEvent:
+    event_type: EventType
+    timestamp: Optional[str] = None
+    source: Optional[str] = None
+    payload: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -137,11 +146,13 @@ class SessionSnapshot:
     selected_inputs: Dict[str, Any] = field(default_factory=dict)
     status: RunLifecycleState = RunLifecycleState.PENDING
     agent_statuses: List[AgentStatusSnapshot] = field(default_factory=list)
+    events: List[SessionEvent] = field(default_factory=list)
     messages: List[SessionMessage] = field(default_factory=list)
     tool_calls: List[ToolCallSnapshot] = field(default_factory=list)
     current_report: Optional[str] = None
     report_sections: Dict[str, Optional[str]] = field(default_factory=dict)
     compiled_report: Optional[str] = None
+    structured_report_sections: Dict[str, Optional[str]] = field(default_factory=dict)
     stats: StatsSnapshot = field(default_factory=StatsSnapshot)
     export_info: ExportInfo = field(default_factory=ExportInfo)
     errors: List[RunError] = field(default_factory=list)

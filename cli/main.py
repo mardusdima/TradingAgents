@@ -16,7 +16,6 @@ from rich.markdown import Markdown
 from rich.layout import Layout
 from rich.text import Text
 from rich.table import Table
-from collections import deque
 import time
 from rich.tree import Tree
 from rich import box
@@ -25,6 +24,8 @@ from rich.rule import Rule
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.runtime.session_state import RuntimeSessionState
+from tradingagents.runtime.stats import StatsCallbackHandler
 from tradingagents.runtime.validation import (
     RunRequestValidationError,
     normalize_analysis_date,
@@ -34,7 +35,6 @@ from tradingagents.runtime.validation import (
 from cli.models import AnalystType
 from cli.utils import *
 from cli.announcements import fetch_announcements, display_announcements
-from cli.stats_handler import StatsCallbackHandler
 
 console = Console()
 
@@ -44,195 +44,7 @@ app = typer.Typer(
     add_completion=True,  # Enable shell completion
 )
 
-
-# Create a deque to store recent messages with a maximum length
-class MessageBuffer:
-    # Fixed teams that always run (not user-selectable)
-    FIXED_AGENTS = {
-        "Research Team": ["Bull Researcher", "Bear Researcher", "Research Manager"],
-        "Trading Team": ["Trader"],
-        "Risk Management": ["Aggressive Analyst", "Neutral Analyst", "Conservative Analyst"],
-        "Portfolio Management": ["Portfolio Manager"],
-    }
-
-    # Analyst name mapping
-    ANALYST_MAPPING = {
-        "market": "Market Analyst",
-        "social": "Social Analyst",
-        "news": "News Analyst",
-        "fundamentals": "Fundamentals Analyst",
-    }
-
-    # Report section mapping: section -> (analyst_key for filtering, finalizing_agent)
-    # analyst_key: which analyst selection controls this section (None = always included)
-    # finalizing_agent: which agent must be "completed" for this report to count as done
-    REPORT_SECTIONS = {
-        "market_report": ("market", "Market Analyst"),
-        "sentiment_report": ("social", "Social Analyst"),
-        "news_report": ("news", "News Analyst"),
-        "fundamentals_report": ("fundamentals", "Fundamentals Analyst"),
-        "investment_plan": (None, "Research Manager"),
-        "trader_investment_plan": (None, "Trader"),
-        "final_trade_decision": (None, "Portfolio Manager"),
-    }
-
-    def __init__(self, max_length=100):
-        self.messages = deque(maxlen=max_length)
-        self.tool_calls = deque(maxlen=max_length)
-        self.current_report = None
-        self.final_report = None  # Store the complete final report
-        self.agent_status = {}
-        self.current_agent = None
-        self.report_sections = {}
-        self.selected_analysts = []
-        self._last_message_id = None
-
-    def init_for_analysis(self, selected_analysts):
-        """Initialize agent status and report sections based on selected analysts.
-
-        Args:
-            selected_analysts: List of analyst type strings (e.g., ["market", "news"])
-        """
-        self.selected_analysts = [a.lower() for a in selected_analysts]
-
-        # Build agent_status dynamically
-        self.agent_status = {}
-
-        # Add selected analysts
-        for analyst_key in self.selected_analysts:
-            if analyst_key in self.ANALYST_MAPPING:
-                self.agent_status[self.ANALYST_MAPPING[analyst_key]] = "pending"
-
-        # Add fixed teams
-        for team_agents in self.FIXED_AGENTS.values():
-            for agent in team_agents:
-                self.agent_status[agent] = "pending"
-
-        # Build report_sections dynamically
-        self.report_sections = {}
-        for section, (analyst_key, _) in self.REPORT_SECTIONS.items():
-            if analyst_key is None or analyst_key in self.selected_analysts:
-                self.report_sections[section] = None
-
-        # Reset other state
-        self.current_report = None
-        self.final_report = None
-        self.current_agent = None
-        self.messages.clear()
-        self.tool_calls.clear()
-        self._last_message_id = None
-
-    def get_completed_reports_count(self):
-        """Count reports that are finalized (their finalizing agent is completed).
-
-        A report is considered complete when:
-        1. The report section has content (not None), AND
-        2. The agent responsible for finalizing that report has status "completed"
-
-        This prevents interim updates (like debate rounds) from counting as completed.
-        """
-        count = 0
-        for section in self.report_sections:
-            if section not in self.REPORT_SECTIONS:
-                continue
-            _, finalizing_agent = self.REPORT_SECTIONS[section]
-            # Report is complete if it has content AND its finalizing agent is done
-            has_content = self.report_sections.get(section) is not None
-            agent_done = self.agent_status.get(finalizing_agent) == "completed"
-            if has_content and agent_done:
-                count += 1
-        return count
-
-    def add_message(self, message_type, content):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        self.messages.append((timestamp, message_type, content))
-
-    def add_tool_call(self, tool_name, args):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        self.tool_calls.append((timestamp, tool_name, args))
-
-    def update_agent_status(self, agent, status):
-        if agent in self.agent_status:
-            self.agent_status[agent] = status
-            self.current_agent = agent
-
-    def update_report_section(self, section_name, content):
-        if section_name in self.report_sections:
-            self.report_sections[section_name] = content
-            self._update_current_report()
-
-    def _update_current_report(self):
-        # For the panel display, only show the most recently updated section
-        latest_section = None
-        latest_content = None
-
-        # Find the most recently updated section
-        for section, content in self.report_sections.items():
-            if content is not None:
-                latest_section = section
-                latest_content = content
-               
-        if latest_section and latest_content:
-            # Format the current section for display
-            section_titles = {
-                "market_report": "Market Analysis",
-                "sentiment_report": "Social Sentiment",
-                "news_report": "News Analysis",
-                "fundamentals_report": "Fundamentals Analysis",
-                "investment_plan": "Research Team Decision",
-                "trader_investment_plan": "Trading Team Plan",
-                "final_trade_decision": "Portfolio Management Decision",
-            }
-            self.current_report = (
-                f"### {section_titles[latest_section]}\n{latest_content}"
-            )
-
-        # Update the final complete report
-        self._update_final_report()
-
-    def _update_final_report(self):
-        report_parts = []
-
-        # Analyst Team Reports - use .get() to handle missing sections
-        analyst_sections = ["market_report", "sentiment_report", "news_report", "fundamentals_report"]
-        if any(self.report_sections.get(section) for section in analyst_sections):
-            report_parts.append("## Analyst Team Reports")
-            if self.report_sections.get("market_report"):
-                report_parts.append(
-                    f"### Market Analysis\n{self.report_sections['market_report']}"
-                )
-            if self.report_sections.get("sentiment_report"):
-                report_parts.append(
-                    f"### Social Sentiment\n{self.report_sections['sentiment_report']}"
-                )
-            if self.report_sections.get("news_report"):
-                report_parts.append(
-                    f"### News Analysis\n{self.report_sections['news_report']}"
-                )
-            if self.report_sections.get("fundamentals_report"):
-                report_parts.append(
-                    f"### Fundamentals Analysis\n{self.report_sections['fundamentals_report']}"
-                )
-
-        # Research Team Reports
-        if self.report_sections.get("investment_plan"):
-            report_parts.append("## Research Team Decision")
-            report_parts.append(f"{self.report_sections['investment_plan']}")
-
-        # Trading Team Reports
-        if self.report_sections.get("trader_investment_plan"):
-            report_parts.append("## Trading Team Plan")
-            report_parts.append(f"{self.report_sections['trader_investment_plan']}")
-
-        # Portfolio Management Decision
-        if self.report_sections.get("final_trade_decision"):
-            report_parts.append("## Portfolio Management Decision")
-            report_parts.append(f"{self.report_sections['final_trade_decision']}")
-
-        self.final_report = "\n\n".join(report_parts) if report_parts else None
-
-
-message_buffer = MessageBuffer()
+message_buffer = RuntimeSessionState()
 
 
 def create_layout():
@@ -368,16 +180,18 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     all_messages = []
 
     # Add tool calls
-    for timestamp, tool_name, args in message_buffer.tool_calls:
-        formatted_args = format_tool_args(args)
-        all_messages.append((timestamp, "Tool", f"{tool_name}: {formatted_args}"))
+    for tool_call in message_buffer.tool_calls:
+        formatted_args = format_tool_args(tool_call.arguments)
+        all_messages.append(
+            (tool_call.timestamp or "", "Tool", f"{tool_call.tool_name}: {formatted_args}")
+        )
 
     # Add regular messages
-    for timestamp, msg_type, content in message_buffer.messages:
-        content_str = str(content) if content else ""
+    for message in message_buffer.messages:
+        content_str = str(message.content) if message.content else ""
         if len(content_str) > 200:
             content_str = content_str[:197] + "..."
-        all_messages.append((timestamp, msg_type, content_str))
+        all_messages.append((message.timestamp or "", message.message_type, content_str))
 
     # Sort by timestamp descending (newest first)
     all_messages.sort(key=lambda x: x[0], reverse=True)
@@ -789,139 +603,6 @@ def display_complete_report(final_state):
             console.print(Panel("[bold]V. Portfolio Manager Decision[/bold]", border_style="green"))
             console.print(Panel(Markdown(risk["judge_decision"]), title="Portfolio Manager", border_style="blue", padding=(1, 2)))
 
-
-def update_research_team_status(status):
-    """Update status for research team members (not Trader)."""
-    research_team = ["Bull Researcher", "Bear Researcher", "Research Manager"]
-    for agent in research_team:
-        message_buffer.update_agent_status(agent, status)
-
-
-# Ordered list of analysts for status transitions
-ANALYST_ORDER = ["market", "social", "news", "fundamentals"]
-ANALYST_AGENT_NAMES = {
-    "market": "Market Analyst",
-    "social": "Social Analyst",
-    "news": "News Analyst",
-    "fundamentals": "Fundamentals Analyst",
-}
-ANALYST_REPORT_MAP = {
-    "market": "market_report",
-    "social": "sentiment_report",
-    "news": "news_report",
-    "fundamentals": "fundamentals_report",
-}
-
-
-def update_analyst_statuses(message_buffer, chunk):
-    """Update analyst statuses based on accumulated report state.
-
-    Logic:
-    - Store new report content from the current chunk if present
-    - Check accumulated report_sections (not just current chunk) for status
-    - Analysts with reports = completed
-    - First analyst without report = in_progress
-    - Remaining analysts without reports = pending
-    - When all analysts done, set Bull Researcher to in_progress
-    """
-    selected = message_buffer.selected_analysts
-    found_active = False
-
-    for analyst_key in ANALYST_ORDER:
-        if analyst_key not in selected:
-            continue
-
-        agent_name = ANALYST_AGENT_NAMES[analyst_key]
-        report_key = ANALYST_REPORT_MAP[analyst_key]
-
-        # Capture new report content from current chunk
-        if chunk.get(report_key):
-            message_buffer.update_report_section(report_key, chunk[report_key])
-
-        # Determine status from accumulated sections, not just current chunk
-        has_report = bool(message_buffer.report_sections.get(report_key))
-
-        if has_report:
-            message_buffer.update_agent_status(agent_name, "completed")
-        elif not found_active:
-            message_buffer.update_agent_status(agent_name, "in_progress")
-            found_active = True
-        else:
-            message_buffer.update_agent_status(agent_name, "pending")
-
-    # When all analysts complete, transition research team to in_progress
-    if not found_active and selected:
-        if message_buffer.agent_status.get("Bull Researcher") == "pending":
-            message_buffer.update_agent_status("Bull Researcher", "in_progress")
-
-def extract_content_string(content):
-    """Extract string content from various message formats.
-    Returns None if no meaningful text content is found.
-    """
-    import ast
-
-    def is_empty(val):
-        """Check if value is empty using Python's truthiness."""
-        if val is None or val == '':
-            return True
-        if isinstance(val, str):
-            s = val.strip()
-            if not s:
-                return True
-            try:
-                return not bool(ast.literal_eval(s))
-            except (ValueError, SyntaxError):
-                return False  # Can't parse = real text
-        return not bool(val)
-
-    if is_empty(content):
-        return None
-
-    if isinstance(content, str):
-        return content.strip()
-
-    if isinstance(content, dict):
-        text = content.get('text', '')
-        return text.strip() if not is_empty(text) else None
-
-    if isinstance(content, list):
-        text_parts = [
-            item.get('text', '').strip() if isinstance(item, dict) and item.get('type') == 'text'
-            else (item.strip() if isinstance(item, str) else '')
-            for item in content
-        ]
-        result = ' '.join(t for t in text_parts if t and not is_empty(t))
-        return result if result else None
-
-    return str(content).strip() if not is_empty(content) else None
-
-
-def classify_message_type(message) -> tuple[str, str | None]:
-    """Classify LangChain message into display type and extract content.
-
-    Returns:
-        (type, content) - type is one of: User, Agent, Data, Control
-                        - content is extracted string or None
-    """
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
-    content = extract_content_string(getattr(message, 'content', None))
-
-    if isinstance(message, HumanMessage):
-        if content and content.strip() == "Continue":
-            return ("Control", content)
-        return ("User", content)
-
-    if isinstance(message, ToolMessage):
-        return ("Data", content)
-
-    if isinstance(message, AIMessage):
-        return ("Agent", content)
-
-    # Fallback for unknown types
-    return ("System", content)
-
-
 def format_tool_args(args, max_length=80) -> str:
     """Format tool arguments for terminal display."""
     result = str(args)
@@ -930,6 +611,9 @@ def format_tool_args(args, max_length=80) -> str:
     return result
 
 def run_analysis():
+    global message_buffer
+    message_buffer = RuntimeSessionState()
+
     # First get all user selections
     selections = get_user_selections()
     try:
@@ -958,7 +642,10 @@ def run_analysis():
 
     # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
     selected_set = {analyst.value for analyst in run_request.analysts}
-    selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
+    selected_analyst_keys = [
+        analyst_key for analyst_key in RuntimeSessionState.ANALYST_ORDER
+        if analyst_key in selected_set
+    ]
 
     # Initialize the graph with callbacks bound to LLMs
     graph = TradingAgentsGraph(
@@ -987,10 +674,10 @@ def run_analysis():
         @wraps(func)
         def wrapper(*args, **kwargs):
             func(*args, **kwargs)
-            timestamp, message_type, content = obj.messages[-1]
-            content = content.replace("\n", " ")  # Replace newlines with spaces
+            message = obj.messages[-1]
+            content = (message.content or "").replace("\n", " ")
             with open(log_file, "a") as f:
-                f.write(f"{timestamp} [{message_type}] {content}\n")
+                f.write(f"{message.timestamp} [{message.message_type}] {content}\n")
         return wrapper
     
     def save_tool_call_decorator(obj, func_name):
@@ -998,22 +685,23 @@ def run_analysis():
         @wraps(func)
         def wrapper(*args, **kwargs):
             func(*args, **kwargs)
-            timestamp, tool_name, args = obj.tool_calls[-1]
-            args_str = ", ".join(f"{k}={v}" for k, v in args.items())
+            tool_call = obj.tool_calls[-1]
+            arguments = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
+            args_str = ", ".join(f"{k}={v}" for k, v in arguments.items()) or str(tool_call.arguments)
             with open(log_file, "a") as f:
-                f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
+                f.write(f"{tool_call.timestamp} [Tool Call] {tool_call.tool_name}({args_str})\n")
         return wrapper
 
     def save_report_section_decorator(obj, func_name):
         func = getattr(obj, func_name)
         @wraps(func)
-        def wrapper(section_name, content):
-            func(section_name, content)
+        def wrapper(section_name, content, *args, **kwargs):
+            func(section_name, content, *args, **kwargs)
             if section_name in obj.report_sections and obj.report_sections[section_name] is not None:
-                content = obj.report_sections[section_name]
-                if content:
+                section_content = obj.report_sections[section_name]
+                if section_content:
                     file_name = f"{section_name}.md"
-                    text = "\n".join(str(item) for item in content) if isinstance(content, list) else content
+                    text = "\n".join(str(item) for item in section_content) if isinstance(section_content, list) else section_content
                     with open(report_dir / file_name, "w") as f:
                         f.write(text)
         return wrapper
@@ -1041,8 +729,7 @@ def run_analysis():
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
         # Update agent status to in_progress for the first analyst
-        first_analyst = f"{run_request.analysts[0].value.capitalize()} Analyst"
-        message_buffer.update_agent_status(first_analyst, "in_progress")
+        message_buffer.start_run()
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
         # Create spinner text
@@ -1062,102 +749,7 @@ def run_analysis():
         # Stream the analysis
         trace = []
         for chunk in graph.graph.stream(init_agent_state, **args):
-            # Process messages if present (skip duplicates via message ID)
-            if len(chunk["messages"]) > 0:
-                last_message = chunk["messages"][-1]
-                msg_id = getattr(last_message, "id", None)
-
-                if msg_id != message_buffer._last_message_id:
-                    message_buffer._last_message_id = msg_id
-
-                    # Add message to buffer
-                    msg_type, content = classify_message_type(last_message)
-                    if content and content.strip():
-                        message_buffer.add_message(msg_type, content)
-
-                    # Handle tool calls
-                    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                        for tool_call in last_message.tool_calls:
-                            if isinstance(tool_call, dict):
-                                message_buffer.add_tool_call(
-                                    tool_call["name"], tool_call["args"]
-                                )
-                            else:
-                                message_buffer.add_tool_call(tool_call.name, tool_call.args)
-
-            # Update analyst statuses based on report state (runs on every chunk)
-            update_analyst_statuses(message_buffer, chunk)
-
-            # Research Team - Handle Investment Debate State
-            if chunk.get("investment_debate_state"):
-                debate_state = chunk["investment_debate_state"]
-                bull_hist = debate_state.get("bull_history", "").strip()
-                bear_hist = debate_state.get("bear_history", "").strip()
-                judge = debate_state.get("judge_decision", "").strip()
-
-                # Only update status when there's actual content
-                if bull_hist or bear_hist:
-                    update_research_team_status("in_progress")
-                if bull_hist:
-                    message_buffer.update_report_section(
-                        "investment_plan", f"### Bull Researcher Analysis\n{bull_hist}"
-                    )
-                if bear_hist:
-                    message_buffer.update_report_section(
-                        "investment_plan", f"### Bear Researcher Analysis\n{bear_hist}"
-                    )
-                if judge:
-                    message_buffer.update_report_section(
-                        "investment_plan", f"### Research Manager Decision\n{judge}"
-                    )
-                    update_research_team_status("completed")
-                    message_buffer.update_agent_status("Trader", "in_progress")
-
-            # Trading Team
-            if chunk.get("trader_investment_plan"):
-                message_buffer.update_report_section(
-                    "trader_investment_plan", chunk["trader_investment_plan"]
-                )
-                if message_buffer.agent_status.get("Trader") != "completed":
-                    message_buffer.update_agent_status("Trader", "completed")
-                    message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-
-            # Risk Management Team - Handle Risk Debate State
-            if chunk.get("risk_debate_state"):
-                risk_state = chunk["risk_debate_state"]
-                agg_hist = risk_state.get("aggressive_history", "").strip()
-                con_hist = risk_state.get("conservative_history", "").strip()
-                neu_hist = risk_state.get("neutral_history", "").strip()
-                judge = risk_state.get("judge_decision", "").strip()
-
-                if agg_hist:
-                    if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
-                        message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-                    message_buffer.update_report_section(
-                        "final_trade_decision", f"### Aggressive Analyst Analysis\n{agg_hist}"
-                    )
-                if con_hist:
-                    if message_buffer.agent_status.get("Conservative Analyst") != "completed":
-                        message_buffer.update_agent_status("Conservative Analyst", "in_progress")
-                    message_buffer.update_report_section(
-                        "final_trade_decision", f"### Conservative Analyst Analysis\n{con_hist}"
-                    )
-                if neu_hist:
-                    if message_buffer.agent_status.get("Neutral Analyst") != "completed":
-                        message_buffer.update_agent_status("Neutral Analyst", "in_progress")
-                    message_buffer.update_report_section(
-                        "final_trade_decision", f"### Neutral Analyst Analysis\n{neu_hist}"
-                    )
-                if judge:
-                    if message_buffer.agent_status.get("Portfolio Manager") != "completed":
-                        message_buffer.update_agent_status("Portfolio Manager", "in_progress")
-                        message_buffer.update_report_section(
-                            "final_trade_decision", f"### Portfolio Manager Decision\n{judge}"
-                        )
-                        message_buffer.update_agent_status("Aggressive Analyst", "completed")
-                        message_buffer.update_agent_status("Conservative Analyst", "completed")
-                        message_buffer.update_agent_status("Neutral Analyst", "completed")
-                        message_buffer.update_agent_status("Portfolio Manager", "completed")
+            message_buffer.process_chunk(chunk)
 
             # Update the display
             update_display(layout, stats_handler=stats_handler, start_time=start_time)
@@ -1169,17 +761,14 @@ def run_analysis():
         decision = graph.process_signal(final_state["final_trade_decision"])
 
         # Update all agent statuses to completed
-        for agent in message_buffer.agent_status:
-            message_buffer.update_agent_status(agent, "completed")
+        message_buffer.complete_run()
 
         message_buffer.add_message(
             "System", f"Completed analysis for {run_request.analysis_date}"
         )
 
         # Update final report sections
-        for section in message_buffer.report_sections.keys():
-            if section in final_state:
-                message_buffer.update_report_section(section, final_state[section])
+        message_buffer.apply_final_state(final_state)
 
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 

@@ -22,6 +22,14 @@ class RuntimeValidationTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.issues[0].field, "ticker")
 
+    def test_normalize_ticker_symbol_rejects_corrupted_or_unsupported_characters(self):
+        for ticker in ("ФAMZN", "Ф\udcd0AMZN", "AMZN!"):
+            with self.subTest(ticker=ticker):
+                with self.assertRaises(RunRequestValidationError) as ctx:
+                    normalize_ticker_symbol(ticker)
+
+                self.assertEqual(ctx.exception.issues[0].field, "ticker")
+
     def test_normalize_analysis_date_rejects_future_dates(self):
         self.assertEqual(
             normalize_analysis_date("2026-03-31", today=date(2026, 4, 1)),
