@@ -15,6 +15,11 @@ from tradingagents.runtime.options import (
     RESEARCH_DEPTH_OPTIONS,
     TICKER_INPUT_EXAMPLES,
 )
+from tradingagents.runtime.validation import (
+    RunRequestValidationError,
+    normalize_analysis_date,
+    normalize_ticker_symbol as runtime_normalize_ticker_symbol,
+)
 
 console = Console()
 
@@ -46,21 +51,16 @@ def get_ticker() -> str:
 
 def normalize_ticker_symbol(ticker: str) -> str:
     """Normalize ticker input while preserving exchange suffixes."""
-    return ticker.strip().upper()
+    return runtime_normalize_ticker_symbol(ticker)
 
 
 def get_analysis_date() -> str:
     """Prompt the user to enter a date in YYYY-MM-DD format."""
-    import re
-    from datetime import datetime
-
     def validate_date(date_str: str) -> bool:
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-            return False
         try:
-            datetime.strptime(date_str, "%Y-%m-%d")
+            normalize_analysis_date(date_str)
             return True
-        except ValueError:
+        except RunRequestValidationError:
             return False
 
     date = questionary.text(
