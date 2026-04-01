@@ -146,6 +146,39 @@ Key outcome:
 - A user can now drive the core workflow from the browser with a real dashboard layout and live shared-runtime-backed updates.
 - The browser client now consumes the same snapshot contract as the CLI.
 
+### Phase 7. Report Export And Persistence Alignment
+
+Completed:
+
+- Updated the shared export helper in `tradingagents/runtime/reporting.py` so exported bundles can include:
+  - the hierarchical report bundle
+  - the flat runtime `reports/` directory
+  - `message_tool.log`
+- Added fallback report reconstruction for export bundles when the flat runtime report files are not already present on disk.
+- Updated both the CLI save flow and the Web export endpoint to call the same shared export helper with runtime artifact context.
+
+Key outcome:
+
+- Web and CLI exports now align deliberately with the shared runtime artifact structure.
+- Export bundles preserve both human-readable outputs and the debugging artifacts generated during execution.
+
+### Phase 9. Developer Experience And Packaging
+
+Completed:
+
+- Added a runnable module entrypoint in `tradingagents/web/app.py`, so the Web UI can now be launched with `python -m tradingagents.web.app`.
+- Added a package console script entrypoint:
+  - `tradingagents-web`
+- Added missing package dependencies for the Web UI stack in `pyproject.toml`:
+  - `fastapi`
+  - `uvicorn`
+- Exported the Web launcher from `tradingagents/web/__init__.py`.
+
+Key outcome:
+
+- The Web UI now has first-class packaging support instead of relying only on a raw `uvicorn` module path.
+- A developer can start the browser dashboard from an installed environment with a stable command surface.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
@@ -240,6 +273,7 @@ Added:
 - `tests/test_runtime_session_state.py`
 - `tests/test_cli_prompt_shortcuts.py`
 - `tests/test_web_api.py`
+- `tests/test_web_app.py`
 
 Expanded:
 
@@ -248,7 +282,7 @@ Expanded:
 
 Current checkpoint:
 
-- Full test suite passes after the dashboard UI implementation checkpoint and subsequent browser validation fixes.
+- Focused runtime and web validation passes after the Phase 7 export-alignment and Phase 9 packaging checkpoint.
 
 ## Current Status Against The Plan
 
@@ -261,14 +295,15 @@ Completed:
 - Phase 4
 - Phase 5
 - Phase 6
+- Phase 7
+- Phase 9
 
 Next planned work:
 
-- Phase 7. Report Export And Persistence Alignment
+- Phase 10. Documentation
 
 ## Notes For The Next Stage
 
-- The browser dashboard is now wired to the backend contract and can start runs, render snapshot updates, and request exports.
-- The browser dashboard has also gone through a post-Phase-6 stabilization pass covering reconnect behavior, cooperative stop UX, restored setup-form state, and desktop layout refinement.
-- The next step should tighten export/persistence behavior so Web outputs align deliberately with the shared runtime artifact structure and failed/partial runs are handled cleanly.
-- Browser-level automation has not been added yet because no Playwright MCP server is available in this session; current validation relies on backend tests and local script/server checks.
+- The runtime and browser layers now have a stable export path and a packaged launch path for local development.
+- The next step should update project-facing documentation so the Web workflow, single-active-run limitation, and shared-runtime architecture are clearly described.
+- Browser-level automation has not been added yet because no Playwright MCP server is available in this session; current validation still relies on unit/API tests and local server checks.
