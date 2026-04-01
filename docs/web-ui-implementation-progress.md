@@ -100,6 +100,30 @@ Key outcome:
 - The CLI now renders from the same shared snapshot contract that the Web UI will consume, reducing CLI-specific state ownership further.
 - Remaining CLI responsibilities are primarily presentation and user prompts.
 
+### Phase 5. Build Web Backend
+
+Completed:
+
+- Added a FastAPI web application in `tradingagents/web/app.py`.
+- Added a lightweight in-memory run registry and shared-runtime-backed web service in `tradingagents/web/api.py`.
+- Enforced the v1 single-active-run guard for the web flow.
+- Implemented:
+  - `GET /api/options`
+  - `POST /api/runs`
+  - `GET /api/runs/{id}`
+  - `GET /api/runs/{id}/events`
+  - `POST /api/runs/{id}/export`
+  - `GET /health`
+  - `GET /`
+- Added JSON serialization helpers for shared runtime option metadata and session snapshots.
+- Reused the shared runtime runner and shared export logic for web-triggered analyses and exports.
+- Added a minimal static HTML/CSS/JS shell so the backend can be opened in a browser during development.
+
+Key outcome:
+
+- The project now has a functioning Web backend that can validate requests, start a run in the background, expose live snapshot events over SSE, return current state, and export reports without duplicating graph orchestration logic.
+- The backend contract needed for the dashboard UI is now available.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
@@ -158,6 +182,7 @@ Added:
 - `tests/test_runtime_validation.py`
 - `tests/test_runtime_session_state.py`
 - `tests/test_cli_prompt_shortcuts.py`
+- `tests/test_web_api.py`
 
 Expanded:
 
@@ -177,13 +202,14 @@ Completed:
 - Phase 2
 - Phase 3
 - Phase 4
+- Phase 5
 
 Next planned work:
 
-- Phase 5. Build Web Backend
+- Phase 6. Build Web Dashboard UI
 
 ## Notes For The Next Stage
 
-- The shared runner and snapshot contracts are now in place for the Web backend to consume directly.
-- The next step should introduce a lightweight FastAPI app, in-memory run registry, and API endpoints around the shared runtime runner.
-- The CLI analyst-picker UI and post-run prompts remain intentionally presentation-layer-specific and should stay in `cli/`.
+- The backend endpoints and SSE stream are now available for a browser client to consume directly.
+- The next step should build the dashboard UI shell and wire it to `/api/options`, `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/events`, and `/api/runs/{id}/export`.
+- The current static page is intentionally minimal and should be replaced by the actual dashboard in the next phase.

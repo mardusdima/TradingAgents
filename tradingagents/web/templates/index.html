@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TradingAgents Web UI</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">TradingAgents</p>
+        <h1>Web backend is ready for dashboard wiring.</h1>
+        <p class="lede">
+          This page is a minimal shell for Phase 5. It confirms the FastAPI app,
+          static assets, and shared runtime-backed API are available.
+        </p>
+      </section>
+      <section class="panel">
+        <h2>Backend Status</h2>
+        <dl id="status-grid" class="status-grid">
+          <div>
+            <dt>Health</dt>
+            <dd id="health-status">Checking...</dd>
+          </div>
+          <div>
+            <dt>Providers</dt>
+            <dd id="provider-count">Loading...</dd>
+          </div>
+          <div>
+            <dt>Analysts</dt>
+            <dd id="analyst-count">Loading...</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
