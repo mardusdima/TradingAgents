@@ -28,7 +28,7 @@ _PASSTHROUGH_KWARGS = (
 _PROVIDER_CONFIG = {
     "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "ollama": ("http://localhost:11434/api/generate", None),
+    "ollama": ("http://localhost:11434/v1", None),
 }
 
 
@@ -58,8 +58,8 @@ class OpenAIClient(BaseLLMClient):
 
         # Provider-specific base URL and auth
         if self.provider in _PROVIDER_CONFIG:
-            base_url, api_key_env = _PROVIDER_CONFIG[self.provider]
-            llm_kwargs["base_url"] = base_url
+            default_base_url, api_key_env = _PROVIDER_CONFIG[self.provider]
+            llm_kwargs["base_url"] = self.base_url or default_base_url
             if api_key_env:
                 api_key = os.environ.get(api_key_env)
                 if api_key:
