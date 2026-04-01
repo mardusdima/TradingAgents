@@ -1,5 +1,11 @@
 # TradingAgents Web UI Implementation Plan
 
+## Progress Log
+
+Implementation progress and issue log:
+
+- [Implementation Progress Log](/Users/dmytro_mardus/PycharmProjects/TradingAgents/docs/web-ui-implementation-progress.md)
+
 ## Goal
 
 Add a simple dashboard-style Web UI with feature parity to the existing CLI while minimizing code changes and keeping the current trading workflow logic in the shared Python core.
