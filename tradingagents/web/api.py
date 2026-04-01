@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import uuid
@@ -20,8 +21,11 @@ from tradingagents.runtime.runner import (
     TradingAgentsRuntimeRunner,
 )
 from tradingagents.runtime.schemas import (
+    EventType,
     RunLifecycleState,
     RunRequest,
+    SessionEvent,
+    SessionMessage,
     SessionSnapshot,
 )
 from tradingagents.runtime.validation import RunRequestValidationError, validate_run_request
@@ -30,6 +34,7 @@ ACTIVE_RUN_STATES = {
     RunLifecycleState.PENDING,
     RunLifecycleState.VALIDATING,
     RunLifecycleState.RUNNING,
+    RunLifecycleState.STOPPING,
 }
 
 RunnerFactory = Callable[[], Any]
@@ -47,6 +52,10 @@ class ExportUnavailableError(RuntimeError):
     pass
 
 
+class StopUnavailableError(RuntimeError):
+    pass
+
+
 class WebRunSession:
     def __init__(self, session_id: str, request: RunRequest, snapshot: SessionSnapshot):
         self.session_id = session_id
@@ -55,6 +64,7 @@ class WebRunSession:
         self.result: RunResult | None = None
         self.export_path: Path | None = None
         self.completed = snapshot.status not in ACTIVE_RUN_STATES
+        self.stop_requested = threading.Event()
         self.events: List[str] = []
         self.condition = threading.Condition()
 
@@ -121,6 +131,12 @@ class TradingAgentsWebService:
     def get_snapshot(self, session_id: str) -> SessionSnapshot:
         return self._registry.get_session(session_id).snapshot
 
+    def get_active_snapshot(self) -> SessionSnapshot | None:
+        active_session = self._registry.get_active_session()
+        if active_session is None:
+            return None
+        return active_session.snapshot
+
     def stream_events(self, session_id: str) -> Iterator[str]:
         session = self._registry.get_session(session_id)
         cursor = 0
@@ -169,12 +185,45 @@ class TradingAgentsWebService:
             self._publish_snapshot(session, session.snapshot)
             return report_path
 
+    def stop_run(self, session_id: str) -> SessionSnapshot:
+        session = self._registry.get_session(session_id)
+        with session.condition:
+            if session.snapshot.status not in ACTIVE_RUN_STATES:
+                raise StopUnavailableError("Run is not active and cannot be stopped.")
+            if session.snapshot.status == RunLifecycleState.STOPPING:
+                return session.snapshot
+
+            session.stop_requested.set()
+            stopping_snapshot = copy.deepcopy(session.snapshot)
+            stopping_snapshot.status = RunLifecycleState.STOPPING
+
+            stop_message = "Stop requested by user. Waiting for the current step to finish."
+            if not any(message.content == stop_message for message in stopping_snapshot.messages):
+                stopping_snapshot.messages.append(
+                    SessionMessage(
+                        message_type="System",
+                        source="System",
+                        content=stop_message,
+                    )
+                )
+            stopping_snapshot.events.append(
+                SessionEvent(
+                    event_type=EventType.STATUS_CHANGE,
+                    source="System",
+                    payload={"status": RunLifecycleState.STOPPING.value},
+                )
+            )
+            self._publish_snapshot(session, stopping_snapshot)
+            return stopping_snapshot
+
     def _run_session(self, session: WebRunSession) -> None:
         runner = self._runner_factory()
         hooks = RuntimeRunnerHooks(
             on_snapshot_updated=lambda snapshot: self._publish_snapshot(session, snapshot),
             on_run_completed=lambda result: self._mark_completed(session, result),
             on_run_failed=lambda error, snapshot: self._mark_failed(session, snapshot),
+            on_run_canceled=lambda error, snapshot: self._mark_failed(session, snapshot),
+            should_stop=session.stop_requested.is_set,
         )
 
         try:
@@ -292,6 +341,17 @@ def create_api_router() -> APIRouter:
 
         return serialize_for_json(snapshot)
 
+    @router.get("/api/runs/active")
+    def get_active_run_snapshot(request: Request):
+        service = get_web_service(request)
+        snapshot = service.get_active_snapshot()
+        if snapshot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "No active run was found."},
+            )
+        return serialize_for_json(snapshot)
+
     @router.get("/api/runs/{session_id}")
     def get_run_snapshot(session_id: str, request: Request):
         service = get_web_service(request)
@@ -333,5 +393,23 @@ def create_api_router() -> APIRouter:
             ) from exc
 
         return {"report_path": str(report_path)}
+
+    @router.post("/api/runs/{session_id}/stop")
+    def stop_run(session_id: str, request: Request):
+        service = get_web_service(request)
+        try:
+            snapshot = service.stop_run(session_id)
+        except SessionNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": f"Run '{session_id}' was not found."},
+            ) from exc
+        except StopUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": str(exc)},
+            ) from exc
+
+        return serialize_for_json(snapshot)
 
     return router

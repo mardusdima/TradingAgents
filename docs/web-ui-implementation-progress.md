@@ -124,6 +124,28 @@ Key outcome:
 - The project now has a functioning Web backend that can validate requests, start a run in the background, expose live snapshot events over SSE, return current state, and export reports without duplicating graph orchestration logic.
 - The backend contract needed for the dashboard UI is now available.
 
+### Phase 6. Build Web Dashboard UI
+
+Completed:
+
+- Replaced the placeholder web shell with a three-column dashboard in `tradingagents/web/templates/index.html`.
+- Added a browser-side dashboard controller in `tradingagents/web/static/app.js` that:
+  - loads runtime option metadata from `/api/options`
+  - populates the setup form
+  - handles provider/model conditional behavior
+  - validates form input before submission
+  - starts runs through `POST /api/runs`
+  - subscribes to `/api/runs/{id}/events` over SSE
+  - renders agent status, events, tool calls, report output, final decision, and footer stats from shared snapshots
+  - supports reset and export actions
+- Added desktop-first responsive styling in `tradingagents/web/static/styles.css`.
+- Preserved the single-page, server-rendered HTML/CSS/JS approach with no separate frontend toolchain.
+
+Key outcome:
+
+- A user can now drive the core workflow from the browser with a real dashboard layout and live shared-runtime-backed updates.
+- The browser client now consumes the same snapshot contract as the CLI.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
@@ -191,7 +213,7 @@ Expanded:
 
 Current checkpoint:
 
-- Full test suite passes after the latest runtime runner extraction.
+- Full test suite passes after the dashboard UI implementation checkpoint.
 
 ## Current Status Against The Plan
 
@@ -203,13 +225,14 @@ Completed:
 - Phase 3
 - Phase 4
 - Phase 5
+- Phase 6
 
 Next planned work:
 
-- Phase 6. Build Web Dashboard UI
+- Phase 7. Report Export And Persistence Alignment
 
 ## Notes For The Next Stage
 
-- The backend endpoints and SSE stream are now available for a browser client to consume directly.
-- The next step should build the dashboard UI shell and wire it to `/api/options`, `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/events`, and `/api/runs/{id}/export`.
-- The current static page is intentionally minimal and should be replaced by the actual dashboard in the next phase.
+- The browser dashboard is now wired to the backend contract and can start runs, render snapshot updates, and request exports.
+- The next step should tighten export/persistence behavior so Web outputs align deliberately with the shared runtime artifact structure and failed/partial runs are handled cleanly.
+- Browser-level automation has not been added yet because no Playwright MCP server is available in this session; current validation relies on backend tests and local script/server checks.

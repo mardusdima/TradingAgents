@@ -7,32 +7,234 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">TradingAgents</p>
-        <h1>Web backend is ready for dashboard wiring.</h1>
-        <p class="lede">
-          This page is a minimal shell for Phase 5. It confirms the FastAPI app,
-          static assets, and shared runtime-backed API are available.
-        </p>
+    <div class="backdrop" aria-hidden="true"></div>
+    <main class="dashboard-shell">
+      <header class="workspace-header">
+        <div class="workspace-intro">
+          <div class="workspace-brand">
+            <p class="eyebrow">TradingAgents Dashboard</p>
+            <h1>Run the multi-agent workflow from the browser.</h1>
+          </div>
+          <p class="lede">
+            Configure an analysis, track live progress, inspect agent output,
+            and export the final report bundle from one workspace.
+          </p>
+        </div>
+        <div class="summary-card">
+          <div class="summary-topline">
+            <div>
+              <span class="summary-label">Run status</span>
+              <strong id="run-status-chip" class="status-chip status-idle">Idle</strong>
+            </div>
+            <span id="active-run-id" class="inline-badge">No session</span>
+          </div>
+          <div class="summary-run">
+            <div>
+              <span class="summary-label">Current run</span>
+              <p id="run-summary-text" class="summary-value">No active analysis</p>
+              <p id="run-status-detail" class="summary-detail hidden"></p>
+            </div>
+            <span id="export-path-badge" class="inline-badge">Not exported</span>
+          </div>
+          <div class="summary-actions">
+            <button id="start-run-button" class="primary-action" type="submit" form="setup-form">
+              Start Analysis
+            </button>
+            <button id="stop-run-button" class="secondary-action" type="button" disabled>
+              Stop Research
+            </button>
+            <button id="reset-run-button" class="secondary-action" type="button">
+              New Analysis
+            </button>
+            <button id="export-run-button" class="secondary-action" type="button" disabled>
+              Export Report
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section id="global-banner" class="banner hidden" role="status" aria-live="polite"></section>
+
+      <section class="dashboard-grid" aria-label="TradingAgents web dashboard">
+        <section class="column column-setup panel-stack">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Setup</p>
+                <h2>Analysis Configuration</h2>
+              </div>
+              <span id="options-status" class="inline-badge">Loading options...</span>
+            </div>
+
+            <form id="setup-form" class="setup-form" novalidate>
+              <div class="setup-grid">
+              <label class="field">
+                <span>Ticker</span>
+                <input id="ticker-input" name="ticker" type="text" placeholder="SPY" maxlength="24" />
+                <small class="hint">Examples: SPY, CNC.TO, 7203.T, 0700.HK</small>
+                <small id="ticker-error" class="field-error"></small>
+              </label>
+
+              <label class="field">
+                <span>Analysis Date</span>
+                <input id="analysis-date-input" name="analysis_date" type="date" />
+                <small id="analysis-date-error" class="field-error"></small>
+              </label>
+
+              <label class="field">
+                <span>Output Language</span>
+                <select id="output-language-select" name="output_language"></select>
+                <small id="output-language-error" class="field-error"></small>
+              </label>
+
+              <label id="custom-language-field" class="field field-span-2 hidden">
+                <span>Custom Language</span>
+                <input id="custom-language-input" name="custom_language" type="text" placeholder="Turkish" />
+              </label>
+
+              <label class="field">
+                <span>Research Depth</span>
+                <select id="research-depth-select" name="research_depth"></select>
+                <small id="research-depth-error" class="field-error"></small>
+              </label>
+
+              <label class="field">
+                <span>Provider</span>
+                <select id="provider-select" name="llm_provider"></select>
+                <small id="provider-error" class="field-error"></small>
+              </label>
+
+              <label class="field">
+                <span>Quick-Thinking Model</span>
+                <select id="quick-model-select" name="shallow_thinker"></select>
+                <small id="quick-model-error" class="field-error"></small>
+              </label>
+
+              <label class="field">
+                <span>Deep-Thinking Model</span>
+                <select id="deep-model-select" name="deep_thinker"></select>
+                <small id="deep-model-error" class="field-error"></small>
+              </label>
+
+              <label id="provider-specific-field" class="field hidden">
+                <span id="provider-specific-label">Provider Setting</span>
+                <select id="provider-specific-select"></select>
+                <small id="provider-specific-error" class="field-error"></small>
+              </label>
+
+              <fieldset class="field fieldset field-span-2">
+                <legend>Analyst Team</legend>
+                <div id="analyst-options" class="checkbox-grid"></div>
+                <small id="analysts-error" class="field-error"></small>
+              </fieldset>
+              </div>
+            </form>
+          </article>
+        </section>
+
+        <section class="column column-activity panel-stack">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Activity</p>
+                <h2>Live Agent Flow</h2>
+              </div>
+              <span class="inline-badge">Live</span>
+            </div>
+
+            <section id="error-banner" class="error-banner hidden"></section>
+
+            <div class="activity-grid">
+              <div class="subpanel subpanel-wide">
+                <div class="subpanel-heading">
+                  <h3>Agent Status</h3>
+                </div>
+                <div id="agent-status-groups" class="status-groups empty-state">
+                  Start a run to watch team progression.
+                </div>
+              </div>
+
+              <div class="subpanel">
+                <div class="subpanel-heading">
+                  <h3>Event Feed</h3>
+                </div>
+                <ul id="event-feed" class="feed-list empty-state">
+                  <li>No events yet.</li>
+                </ul>
+              </div>
+
+              <div class="subpanel">
+                <div class="subpanel-heading">
+                  <h3>Tool Calls</h3>
+                </div>
+                <ul id="tool-call-feed" class="feed-list empty-state">
+                  <li>No tool calls yet.</li>
+                </ul>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="column column-results panel-stack">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Results</p>
+                <h2>Report Output</h2>
+              </div>
+              <span class="inline-badge">Reports</span>
+            </div>
+
+            <div id="final-decision-card" class="decision-card hidden">
+              <p class="panel-kicker">Final Decision</p>
+              <div id="final-decision-content" class="decision-content"></div>
+            </div>
+
+            <div class="results-grid">
+              <div class="subpanel">
+                <div class="subpanel-heading">
+                  <h3>Current Report</h3>
+                </div>
+                <pre id="current-report" class="report-surface empty-state">Waiting for analysis report...</pre>
+              </div>
+
+              <div class="subpanel">
+                <div class="subpanel-heading">
+                  <h3>Compiled Report</h3>
+                </div>
+                <pre id="compiled-report" class="report-surface empty-state">The compiled report will appear here when enough sections are ready.</pre>
+              </div>
+            </div>
+          </article>
+        </section>
       </section>
-      <section class="panel">
-        <h2>Backend Status</h2>
-        <dl id="status-grid" class="status-grid">
-          <div>
-            <dt>Health</dt>
-            <dd id="health-status">Checking...</dd>
-          </div>
-          <div>
-            <dt>Providers</dt>
-            <dd id="provider-count">Loading...</dd>
-          </div>
-          <div>
-            <dt>Analysts</dt>
-            <dd id="analyst-count">Loading...</dd>
-          </div>
-        </dl>
-      </section>
+
+      <footer class="stats-bar panel">
+        <div class="stat-pill">
+          <span>Agents</span>
+          <strong id="stat-agents">0/0</strong>
+        </div>
+        <div class="stat-pill">
+          <span>Reports</span>
+          <strong id="stat-reports">0/0</strong>
+        </div>
+        <div class="stat-pill">
+          <span>LLM Calls</span>
+          <strong id="stat-llm-calls">0</strong>
+        </div>
+        <div class="stat-pill">
+          <span>Tool Calls</span>
+          <strong id="stat-tool-calls">0</strong>
+        </div>
+        <div class="stat-pill">
+          <span>Tokens</span>
+          <strong id="stat-tokens">--</strong>
+        </div>
+        <div class="stat-pill">
+          <span>Elapsed</span>
+          <strong id="stat-elapsed">00:00</strong>
+        </div>
+      </footer>
     </main>
     <script src="/static/app.js"></script>
   </body>

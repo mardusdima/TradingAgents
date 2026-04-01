@@ -65,7 +65,9 @@ class RunLifecycleState(str, Enum):
     PENDING = "pending"
     VALIDATING = "validating"
     RUNNING = "running"
+    STOPPING = "stopping"
     COMPLETED = "completed"
+    CANCELED = "canceled"
     FAILED = "failed"
 
 
