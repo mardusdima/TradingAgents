@@ -82,6 +82,24 @@ Key outcome:
 - A single runtime component can now execute the end-to-end analysis flow without depending on CLI rendering code.
 - The CLI now uses the shared execution path that the Web backend can build on next.
 
+### Phase 4. Refactor CLI To Use Shared Runtime
+
+Completed:
+
+- Refactored the CLI live layout rendering to consume `SessionSnapshot` data directly instead of reading from a shared mutable session-state instance.
+- Added snapshot-driven rendering helpers in `cli/rendering.py` for:
+  - team-grouped agent status rows
+  - merged message/tool activity feed rows
+  - completed report counts
+- Removed the CLI's dependency on injecting its own `RuntimeSessionState` into the runtime runner.
+- Preserved the existing Rich live dashboard layout and post-run prompts while making the CLI a thinner presentation layer over shared runtime contracts.
+- Added an error-state analysis panel path so failed runs can still render a snapshot-driven UI state.
+
+Key outcome:
+
+- The CLI now renders from the same shared snapshot contract that the Web UI will consume, reducing CLI-specific state ownership further.
+- Remaining CLI responsibilities are primarily presentation and user prompts.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
@@ -133,6 +151,7 @@ Fix:
 
 Added:
 
+- `tests/test_cli_rendering.py`
 - `tests/test_runtime_contracts.py`
 - `tests/test_runtime_reporting.py`
 - `tests/test_runtime_runner.py`
@@ -157,13 +176,14 @@ Completed:
 - Phase 1
 - Phase 2
 - Phase 3
+- Phase 4
 
 Next planned work:
 
-- Phase 4. Refactor CLI To Use Shared Runtime
+- Phase 5. Build Web Backend
 
 ## Notes For The Next Stage
 
-- `cli/main.py` now delegates run execution to the shared runtime runner, but it still owns the Rich layout rendering and the interactive post-run prompts.
-- The next step should thin the CLI further so it renders shared snapshots more directly and keeps presentation concerns isolated from the remaining orchestration details.
-- The CLI analyst-picker UI remains intentionally presentation-layer-specific and should stay in `cli/`, while execution and export behavior continue living in `tradingagents/runtime/`.
+- The shared runner and snapshot contracts are now in place for the Web backend to consume directly.
+- The next step should introduce a lightweight FastAPI app, in-memory run registry, and API endpoints around the shared runtime runner.
+- The CLI analyst-picker UI and post-run prompts remain intentionally presentation-layer-specific and should stay in `cli/`.
