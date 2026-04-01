@@ -1,8 +1,6 @@
-from typing import Optional
 import datetime
 import typer
 from pathlib import Path
-from functools import wraps
 from rich.console import Console
 from dotenv import load_dotenv
 
@@ -22,10 +20,13 @@ from rich import box
 from rich.align import Align
 from rich.rule import Rule
 
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.runtime.reporting import export_report_bundle
+from tradingagents.runtime.runner import (
+    RuntimeRunnerError,
+    RuntimeRunnerHooks,
+    TradingAgentsRuntimeRunner,
+)
 from tradingagents.runtime.session_state import RuntimeSessionState
-from tradingagents.runtime.stats import StatsCallbackHandler
 from tradingagents.runtime.validation import (
     RunRequestValidationError,
     normalize_analysis_date,
@@ -70,7 +71,7 @@ def format_tokens(n):
     return str(n)
 
 
-def update_display(layout, spinner_text=None, stats_handler=None, start_time=None):
+def update_display(layout, spinner_text=None, stats_snapshot=None, start_time=None):
     # Header with welcome message
     layout["header"].update(
         Panel(
@@ -251,15 +252,15 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     # Build stats parts
     stats_parts = [f"Agents: {agents_completed}/{agents_total}"]
 
-    # LLM and tool stats from callback handler
-    if stats_handler:
-        stats = stats_handler.get_stats()
-        stats_parts.append(f"LLM: {stats['llm_calls']}")
-        stats_parts.append(f"Tools: {stats['tool_calls']}")
+    if stats_snapshot:
+        stats_parts.append(f"LLM: {stats_snapshot.llm_calls}")
+        stats_parts.append(f"Tools: {stats_snapshot.tool_calls}")
 
-        # Token display with graceful fallback
-        if stats["tokens_in"] > 0 or stats["tokens_out"] > 0:
-            tokens_str = f"Tokens: {format_tokens(stats['tokens_in'])}\u2191 {format_tokens(stats['tokens_out'])}\u2193"
+        if stats_snapshot.prompt_tokens > 0 or stats_snapshot.completion_tokens > 0:
+            tokens_str = (
+                f"Tokens: {format_tokens(stats_snapshot.prompt_tokens)}\u2191 "
+                f"{format_tokens(stats_snapshot.completion_tokens)}\u2193"
+            )
         else:
             tokens_str = "Tokens: --"
         stats_parts.append(tokens_str)
@@ -452,97 +453,6 @@ def get_analysis_date():
         except RunRequestValidationError as exc:
             console.print(f"[red]Error: {exc.issues[0].message}[/red]")
 
-
-def save_report_to_disk(final_state, ticker: str, save_path: Path):
-    """Save complete analysis report to disk with organized subfolders."""
-    save_path.mkdir(parents=True, exist_ok=True)
-    sections = []
-
-    # 1. Analysts
-    analysts_dir = save_path / "1_analysts"
-    analyst_parts = []
-    if final_state.get("market_report"):
-        analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "market.md").write_text(final_state["market_report"])
-        analyst_parts.append(("Market Analyst", final_state["market_report"]))
-    if final_state.get("sentiment_report"):
-        analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"])
-        analyst_parts.append(("Social Analyst", final_state["sentiment_report"]))
-    if final_state.get("news_report"):
-        analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "news.md").write_text(final_state["news_report"])
-        analyst_parts.append(("News Analyst", final_state["news_report"]))
-    if final_state.get("fundamentals_report"):
-        analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "fundamentals.md").write_text(final_state["fundamentals_report"])
-        analyst_parts.append(("Fundamentals Analyst", final_state["fundamentals_report"]))
-    if analyst_parts:
-        content = "\n\n".join(f"### {name}\n{text}" for name, text in analyst_parts)
-        sections.append(f"## I. Analyst Team Reports\n\n{content}")
-
-    # 2. Research
-    if final_state.get("investment_debate_state"):
-        research_dir = save_path / "2_research"
-        debate = final_state["investment_debate_state"]
-        research_parts = []
-        if debate.get("bull_history"):
-            research_dir.mkdir(exist_ok=True)
-            (research_dir / "bull.md").write_text(debate["bull_history"])
-            research_parts.append(("Bull Researcher", debate["bull_history"]))
-        if debate.get("bear_history"):
-            research_dir.mkdir(exist_ok=True)
-            (research_dir / "bear.md").write_text(debate["bear_history"])
-            research_parts.append(("Bear Researcher", debate["bear_history"]))
-        if debate.get("judge_decision"):
-            research_dir.mkdir(exist_ok=True)
-            (research_dir / "manager.md").write_text(debate["judge_decision"])
-            research_parts.append(("Research Manager", debate["judge_decision"]))
-        if research_parts:
-            content = "\n\n".join(f"### {name}\n{text}" for name, text in research_parts)
-            sections.append(f"## II. Research Team Decision\n\n{content}")
-
-    # 3. Trading
-    if final_state.get("trader_investment_plan"):
-        trading_dir = save_path / "3_trading"
-        trading_dir.mkdir(exist_ok=True)
-        (trading_dir / "trader.md").write_text(final_state["trader_investment_plan"])
-        sections.append(f"## III. Trading Team Plan\n\n### Trader\n{final_state['trader_investment_plan']}")
-
-    # 4. Risk Management
-    if final_state.get("risk_debate_state"):
-        risk_dir = save_path / "4_risk"
-        risk = final_state["risk_debate_state"]
-        risk_parts = []
-        if risk.get("aggressive_history"):
-            risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "aggressive.md").write_text(risk["aggressive_history"])
-            risk_parts.append(("Aggressive Analyst", risk["aggressive_history"]))
-        if risk.get("conservative_history"):
-            risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "conservative.md").write_text(risk["conservative_history"])
-            risk_parts.append(("Conservative Analyst", risk["conservative_history"]))
-        if risk.get("neutral_history"):
-            risk_dir.mkdir(exist_ok=True)
-            (risk_dir / "neutral.md").write_text(risk["neutral_history"])
-            risk_parts.append(("Neutral Analyst", risk["neutral_history"]))
-        if risk_parts:
-            content = "\n\n".join(f"### {name}\n{text}" for name, text in risk_parts)
-            sections.append(f"## IV. Risk Management Team Decision\n\n{content}")
-
-        # 5. Portfolio Manager
-        if risk.get("judge_decision"):
-            portfolio_dir = save_path / "5_portfolio"
-            portfolio_dir.mkdir(exist_ok=True)
-            (portfolio_dir / "decision.md").write_text(risk["judge_decision"])
-            sections.append(f"## V. Portfolio Manager Decision\n\n### Portfolio Manager\n{risk['judge_decision']}")
-
-    # Write consolidated report
-    header = f"# Trading Analysis Report: {ticker}\n\nGenerated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-    (save_path / "complete_report.md").write_text(header + "\n\n".join(sections))
-    return save_path / "complete_report.md"
-
-
 def display_complete_report(final_state):
     """Display the complete analysis report sequentially (avoids truncation)."""
     console.print()
@@ -613,6 +523,7 @@ def format_tool_args(args, max_length=80) -> str:
 def run_analysis():
     global message_buffer
     message_buffer = RuntimeSessionState()
+    latest_stats_snapshot = None
 
     # First get all user selections
     selections = get_user_selections()
@@ -623,154 +534,37 @@ def run_analysis():
             console.print(f"[red]Error in {issue.field}: {issue.message}[/red]")
         raise typer.Exit(code=1)
 
-    # Create config with selected research depth
-    config = DEFAULT_CONFIG.copy()
-    config["max_debate_rounds"] = run_request.research_depth
-    config["max_risk_discuss_rounds"] = run_request.research_depth
-    config["quick_think_llm"] = run_request.shallow_thinker
-    config["deep_think_llm"] = run_request.deep_thinker
-    config["backend_url"] = run_request.backend_url
-    config["llm_provider"] = run_request.llm_provider.value
-    # Provider-specific thinking configuration
-    config["google_thinking_level"] = run_request.google_thinking_level
-    config["openai_reasoning_effort"] = run_request.openai_reasoning_effort
-    config["anthropic_effort"] = run_request.anthropic_effort
-    config["output_language"] = run_request.output_language
-
-    # Create stats callback handler for tracking LLM/tool calls
-    stats_handler = StatsCallbackHandler()
-
-    # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
-    selected_set = {analyst.value for analyst in run_request.analysts}
-    selected_analyst_keys = [
-        analyst_key for analyst_key in RuntimeSessionState.ANALYST_ORDER
-        if analyst_key in selected_set
-    ]
-
-    # Initialize the graph with callbacks bound to LLMs
-    graph = TradingAgentsGraph(
-        selected_analyst_keys,
-        config=config,
-        debug=True,
-        callbacks=[stats_handler],
-    )
-
-    # Initialize message buffer with selected analysts
-    message_buffer.init_for_analysis(selected_analyst_keys)
-
     # Track start time for elapsed display
     start_time = time.time()
 
-    # Create result directory
-    results_dir = Path(config["results_dir"]) / run_request.ticker / run_request.analysis_date
-    results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = results_dir / "reports"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    log_file = results_dir / "message_tool.log"
-    log_file.touch(exist_ok=True)
-
-    def save_message_decorator(obj, func_name):
-        func = getattr(obj, func_name)
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            message = obj.messages[-1]
-            content = (message.content or "").replace("\n", " ")
-            with open(log_file, "a") as f:
-                f.write(f"{message.timestamp} [{message.message_type}] {content}\n")
-        return wrapper
-    
-    def save_tool_call_decorator(obj, func_name):
-        func = getattr(obj, func_name)
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            tool_call = obj.tool_calls[-1]
-            arguments = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
-            args_str = ", ".join(f"{k}={v}" for k, v in arguments.items()) or str(tool_call.arguments)
-            with open(log_file, "a") as f:
-                f.write(f"{tool_call.timestamp} [Tool Call] {tool_call.tool_name}({args_str})\n")
-        return wrapper
-
-    def save_report_section_decorator(obj, func_name):
-        func = getattr(obj, func_name)
-        @wraps(func)
-        def wrapper(section_name, content, *args, **kwargs):
-            func(section_name, content, *args, **kwargs)
-            if section_name in obj.report_sections and obj.report_sections[section_name] is not None:
-                section_content = obj.report_sections[section_name]
-                if section_content:
-                    file_name = f"{section_name}.md"
-                    text = "\n".join(str(item) for item in section_content) if isinstance(section_content, list) else section_content
-                    with open(report_dir / file_name, "w") as f:
-                        f.write(text)
-        return wrapper
-
-    message_buffer.add_message = save_message_decorator(message_buffer, "add_message")
-    message_buffer.add_tool_call = save_tool_call_decorator(message_buffer, "add_tool_call")
-    message_buffer.update_report_section = save_report_section_decorator(message_buffer, "update_report_section")
-
     # Now start the display layout
     layout = create_layout()
+    spinner_text = (
+        f"Analyzing {run_request.ticker} on {run_request.analysis_date}..."
+    )
+    runner = TradingAgentsRuntimeRunner(session_state_factory=lambda: message_buffer)
+
+    def handle_snapshot(snapshot):
+        nonlocal latest_stats_snapshot
+        latest_stats_snapshot = snapshot.stats
+        update_display(
+            layout,
+            spinner_text=spinner_text,
+            stats_snapshot=latest_stats_snapshot,
+            start_time=start_time,
+        )
 
     with Live(layout, refresh_per_second=4) as live:
-        # Initial display
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-        # Add initial messages
-        message_buffer.add_message("System", f"Selected ticker: {run_request.ticker}")
-        message_buffer.add_message(
-            "System", f"Analysis date: {run_request.analysis_date}"
-        )
-        message_buffer.add_message(
-            "System",
-            f"Selected analysts: {', '.join(analyst.value for analyst in run_request.analysts)}",
-        )
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-        # Update agent status to in_progress for the first analyst
-        message_buffer.start_run()
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-        # Create spinner text
-        spinner_text = (
-            f"Analyzing {run_request.ticker} on {run_request.analysis_date}..."
-        )
-        update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
-
-        # Initialize state and get graph args with callbacks
-        init_agent_state = graph.propagator.create_initial_state(
-            run_request.ticker, run_request.analysis_date
-        )
-        # Pass callbacks to graph config for tool execution tracking
-        # (LLM tracking is handled separately via LLM constructor)
-        args = graph.propagator.get_graph_args(callbacks=[stats_handler])
-
-        # Stream the analysis
-        trace = []
-        for chunk in graph.graph.stream(init_agent_state, **args):
-            message_buffer.process_chunk(chunk)
-
-            # Update the display
-            update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-            trace.append(chunk)
-
-        # Get final state and decision
-        final_state = trace[-1]
-        decision = graph.process_signal(final_state["final_trade_decision"])
-
-        # Update all agent statuses to completed
-        message_buffer.complete_run()
-
-        message_buffer.add_message(
-            "System", f"Completed analysis for {run_request.analysis_date}"
-        )
-
-        # Update final report sections
-        message_buffer.apply_final_state(final_state)
-
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
+        update_display(layout, spinner_text=spinner_text, start_time=start_time)
+        try:
+            result = runner.run(
+                run_request,
+                hooks=RuntimeRunnerHooks(on_snapshot_updated=handle_snapshot),
+            )
+        except RuntimeRunnerError as exc:
+            error_message = exc.run_error.message
+            console.print(f"\n[red]Analysis failed:[/red] {error_message}")
+            raise typer.Exit(code=1)
 
     # Post-analysis prompts (outside Live context for clean interaction)
     console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
@@ -786,7 +580,11 @@ def run_analysis():
         ).strip()
         save_path = Path(save_path_str)
         try:
-            report_file = save_report_to_disk(final_state, run_request.ticker, save_path)
+            report_file = export_report_bundle(
+                result.final_state,
+                run_request.ticker,
+                save_path,
+            )
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
         except Exception as e:
@@ -795,7 +593,7 @@ def run_analysis():
     # Prompt to display full report
     display_choice = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper()
     if display_choice in ("Y", "YES", ""):
-        display_complete_report(final_state)
+        display_complete_report(result.final_state)
 
 
 @app.command()
