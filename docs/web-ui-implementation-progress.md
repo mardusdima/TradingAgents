@@ -162,6 +162,32 @@ Key outcome:
 - Web and CLI exports now align deliberately with the shared runtime artifact structure.
 - Export bundles preserve both human-readable outputs and the debugging artifacts generated during execution.
 
+### Phase 8. Testing
+
+Completed:
+
+- Added shared validation coverage in:
+  - `tests/test_runtime_validation.py`
+  - `tests/test_ticker_symbol_handling.py`
+- Added shared options and runtime-contract coverage in:
+  - `tests/test_runtime_contracts.py`
+- Added session-state transition and chunk-processing coverage in:
+  - `tests/test_runtime_session_state.py`
+- Added compiled-report and export-structure coverage in:
+  - `tests/test_runtime_reporting.py`
+- Added shared-runner and mocked graph-stream coverage in:
+  - `tests/test_runtime_runner.py`
+- Added Web API contract coverage in:
+  - `tests/test_web_api.py`
+- Added CLI regression/rendering coverage in:
+  - `tests/test_cli_rendering.py`
+  - `tests/test_cli_prompt_shortcuts.py`
+
+Key outcome:
+
+- New shared runtime behavior is covered by focused unit tests.
+- Web-specific API contracts are covered by tests, including active-run guarding, SSE snapshots, export, and stop behavior.
+
 ### Phase 9. Developer Experience And Packaging
 
 Completed:
@@ -282,7 +308,7 @@ Expanded:
 
 Current checkpoint:
 
-- Focused runtime and web validation passes after the Phase 7 export-alignment and Phase 9 packaging checkpoint.
+- Focused runtime and web validation passes after the Phase 7, Phase 8, and Phase 9 checkpoints.
 
 ## Current Status Against The Plan
 
@@ -296,6 +322,7 @@ Completed:
 - Phase 5
 - Phase 6
 - Phase 7
+- Phase 8
 - Phase 9
 
 Next planned work:
