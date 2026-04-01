@@ -49,7 +49,7 @@
 
 <div align="center">
 
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & CLI](#installation-and-cli) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
+🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & Run Modes](#installation-and-run-modes) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
 
 </div>
 
@@ -97,7 +97,7 @@ Our framework decomposes complex trading tasks into specialized roles. This ensu
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
-## Installation and CLI
+## Installation and Run Modes
 
 ### Installation
 
@@ -116,6 +116,11 @@ conda activate tradingagents
 Install the package and its dependencies:
 ```bash
 pip install .
+```
+
+If you want to use the Web UI, install the web server dependencies as well:
+```bash
+pip install fastapi uvicorn
 ```
 
 ### Required APIs
@@ -138,7 +143,7 @@ Alternatively, copy `.env.example` to `.env` and fill in your keys:
 cp .env.example .env
 ```
 
-### CLI Usage
+### Run in CLI Mode
 
 Launch the interactive CLI:
 ```bash
@@ -160,6 +165,27 @@ An interface will appear showing results as they load, letting you track the age
 <p align="center">
   <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
 </p>
+
+### Run in Web UI Mode
+
+TradingAgents also includes a local dashboard-style Web UI built on FastAPI. It uses the same shared runtime as the CLI, so you can configure a run in the browser and watch live progress, messages, tool calls, report updates, and the final decision as the analysis executes.
+
+Start the Web UI server:
+```bash
+uvicorn tradingagents.web.app:app --reload
+```
+
+Then open the app in your browser:
+```text
+http://127.0.0.1:8000
+```
+
+You can also start it with Python directly:
+```bash
+python -m uvicorn tradingagents.web.app:app --reload
+```
+
+The v1 Web UI is intended for local development and currently supports one active run at a time.
 
 ## TradingAgents Package
 

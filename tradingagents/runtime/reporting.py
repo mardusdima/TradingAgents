@@ -1,8 +1,34 @@
 from __future__ import annotations
 
 import datetime as dt
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+
+def _runtime_report_sections(final_state: Dict[str, Any]) -> Dict[str, str]:
+    sections: Dict[str, str] = {}
+
+    for section_name in (
+        "market_report",
+        "sentiment_report",
+        "news_report",
+        "fundamentals_report",
+        "trader_investment_plan",
+    ):
+        content = final_state.get(section_name)
+        if content:
+            sections[section_name] = str(content)
+
+    investment_debate = final_state.get("investment_debate_state") or {}
+    if investment_debate.get("judge_decision"):
+        sections["investment_plan"] = str(investment_debate["judge_decision"])
+
+    risk_debate = final_state.get("risk_debate_state") or {}
+    if risk_debate.get("judge_decision"):
+        sections["final_trade_decision"] = str(risk_debate["judge_decision"])
+
+    return sections
 
 
 def compile_report_sections(final_state: Dict[str, Any]) -> List[str]:
@@ -89,6 +115,8 @@ def export_report_bundle(
     save_path: Path,
     *,
     generated_at: dt.datetime | None = None,
+    runtime_report_dir: Path | None = None,
+    runtime_log_file: Path | None = None,
 ) -> Path:
     save_path.mkdir(parents=True, exist_ok=True)
 
@@ -163,4 +191,23 @@ def export_report_bundle(
         ),
         encoding="utf-8",
     )
+
+    if runtime_report_dir is not None and runtime_report_dir.exists():
+        exported_reports_dir = save_path / "reports"
+        exported_reports_dir.mkdir(exist_ok=True)
+        for report_path in sorted(runtime_report_dir.glob("*.md")):
+            shutil.copy2(report_path, exported_reports_dir / report_path.name)
+
+    runtime_sections = _runtime_report_sections(final_state)
+    if runtime_sections:
+        exported_reports_dir = save_path / "reports"
+        exported_reports_dir.mkdir(exist_ok=True)
+        for section_name, content in runtime_sections.items():
+            report_path = exported_reports_dir / f"{section_name}.md"
+            if not report_path.exists():
+                report_path.write_text(content, encoding="utf-8")
+
+    if runtime_log_file is not None and runtime_log_file.exists():
+        shutil.copy2(runtime_log_file, save_path / "message_tool.log")
+
     return report_file

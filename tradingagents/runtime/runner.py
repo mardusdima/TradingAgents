@@ -29,6 +29,8 @@ MessageHook = Callable[[SessionMessage], None]
 ToolCallHook = Callable[[ToolCallSnapshot], None]
 RunCompletedHook = Callable[["RunResult"], None]
 RunFailedHook = Callable[[RunError, Optional[SessionSnapshot]], None]
+RunCanceledHook = Callable[[RunError, Optional[SessionSnapshot]], None]
+StopRequestedCheck = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,8 @@ class RuntimeRunnerHooks:
     on_tool_call_appended: Optional[ToolCallHook] = None
     on_run_completed: Optional[RunCompletedHook] = None
     on_run_failed: Optional[RunFailedHook] = None
+    on_run_canceled: Optional[RunCanceledHook] = None
+    should_stop: Optional[StopRequestedCheck] = None
 
 
 @dataclass
@@ -63,6 +67,10 @@ class RuntimeRunnerError(RuntimeError):
         self.run_error = run_error
         self.snapshot = snapshot
         super().__init__(run_error.message)
+
+
+class RuntimeRunnerCanceled(RuntimeRunnerError):
+    pass
 
 
 class TradingAgentsRuntimeRunner:
@@ -110,6 +118,7 @@ class TradingAgentsRuntimeRunner:
                 errors=errors,
                 hook=hooks.on_snapshot_updated,
             )
+            self._raise_if_stop_requested(hooks)
 
             graph = self._graph_factory(
                 selected_analyst_keys,
@@ -137,6 +146,10 @@ class TradingAgentsRuntimeRunner:
                 errors=errors,
                 hook=hooks.on_snapshot_updated,
             )
+            self._raise_if_stop_requested(
+                hooks,
+                session_state=session_state,
+            )
 
             init_agent_state = graph.propagator.create_initial_state(
                 run_request.ticker,
@@ -146,6 +159,10 @@ class TradingAgentsRuntimeRunner:
 
             trace: List[Dict[str, Any]] = []
             for chunk in graph.graph.stream(init_agent_state, **graph_args):
+                self._raise_if_stop_requested(
+                    hooks,
+                    session_state=session_state,
+                )
                 session_state.process_chunk(chunk)
                 trace.append(chunk)
                 self._emit_snapshot(
@@ -157,6 +174,10 @@ class TradingAgentsRuntimeRunner:
                     artifacts=artifacts,
                     errors=errors,
                     hook=hooks.on_snapshot_updated,
+                )
+                self._raise_if_stop_requested(
+                    hooks,
+                    session_state=session_state,
                 )
 
             if not trace:
@@ -200,6 +221,22 @@ class TradingAgentsRuntimeRunner:
             if hooks.on_run_completed:
                 hooks.on_run_completed(result)
             return result
+        except RuntimeRunnerCanceled as exc:
+            run_error = exc.run_error
+            errors.append(run_error)
+            snapshot = self._safe_terminal_snapshot(
+                session_state=session_state,
+                run_request=run_request,
+                session_id=session_id,
+                stats_handler=stats_handler,
+                errors=errors,
+                status=RunLifecycleState.CANCELED,
+            )
+            if hooks.on_snapshot_updated and snapshot is not None:
+                hooks.on_snapshot_updated(snapshot)
+            if hooks.on_run_canceled:
+                hooks.on_run_canceled(run_error, snapshot)
+            raise RuntimeRunnerCanceled(run_error, snapshot) from exc
         except Exception as exc:
             run_error = self._normalize_error(exc)
             errors.append(run_error)
@@ -208,12 +245,13 @@ class TradingAgentsRuntimeRunner:
             except Exception:
                 pass
 
-            snapshot = self._safe_failed_snapshot(
+            snapshot = self._safe_terminal_snapshot(
                 session_state=session_state,
                 run_request=run_request,
                 session_id=session_id,
                 stats_handler=stats_handler,
                 errors=errors,
+                status=RunLifecycleState.FAILED,
             )
             if hooks.on_snapshot_updated and snapshot is not None:
                 hooks.on_snapshot_updated(snapshot)
@@ -247,6 +285,28 @@ class TradingAgentsRuntimeRunner:
         config["anthropic_effort"] = run_request.anthropic_effort
         config["output_language"] = run_request.output_language
         return config
+
+    @staticmethod
+    def _raise_if_stop_requested(
+        hooks: RuntimeRunnerHooks,
+        *,
+        session_state: RuntimeSessionState | None = None,
+    ) -> None:
+        if not hooks.should_stop or not hooks.should_stop():
+            return
+
+        if session_state is not None:
+            try:
+                session_state.add_message("System", "Run canceled by user request.")
+            except Exception:
+                pass
+
+        raise RuntimeRunnerCanceled(
+            RunError(
+                message="Run canceled by user request.",
+                code="canceled",
+            )
+        )
 
     @staticmethod
     def _prepare_artifacts(run_request: RunRequest) -> RuntimeRunArtifacts:
@@ -407,7 +467,7 @@ class TradingAgentsRuntimeRunner:
             hook(snapshot)
         return snapshot
 
-    def _safe_failed_snapshot(
+    def _safe_terminal_snapshot(
         self,
         *,
         session_state: RuntimeSessionState,
@@ -415,6 +475,7 @@ class TradingAgentsRuntimeRunner:
         session_id: str | None,
         stats_handler: StatsCallbackHandler,
         errors: List[RunError],
+        status: RunLifecycleState,
     ) -> SessionSnapshot | None:
         try:
             artifacts = self._prepare_artifacts(run_request)
@@ -422,7 +483,7 @@ class TradingAgentsRuntimeRunner:
                 session_id=session_id,
                 request=run_request,
                 selected_inputs=self._selected_inputs(run_request),
-                status=RunLifecycleState.FAILED,
+                status=status,
                 stats=stats_handler.to_snapshot(),
                 export_info=ExportInfo(log_path=str(artifacts.log_file)),
                 errors=list(errors),
@@ -445,6 +506,8 @@ class TradingAgentsRuntimeRunner:
                     ]
                 },
             )
+        if isinstance(exc, RuntimeRunnerCanceled):
+            return exc.run_error
         return RunError(
             message=str(exc) or "Analysis run failed unexpectedly.",
             code="runtime_error",

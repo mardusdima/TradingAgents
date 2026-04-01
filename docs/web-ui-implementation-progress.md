@@ -124,9 +124,66 @@ Key outcome:
 - The project now has a functioning Web backend that can validate requests, start a run in the background, expose live snapshot events over SSE, return current state, and export reports without duplicating graph orchestration logic.
 - The backend contract needed for the dashboard UI is now available.
 
+### Phase 6. Build Web Dashboard UI
+
+Completed:
+
+- Replaced the placeholder web shell with a three-column dashboard in `tradingagents/web/templates/index.html`.
+- Added a browser-side dashboard controller in `tradingagents/web/static/app.js` that:
+  - loads runtime option metadata from `/api/options`
+  - populates the setup form
+  - handles provider/model conditional behavior
+  - validates form input before submission
+  - starts runs through `POST /api/runs`
+  - subscribes to `/api/runs/{id}/events` over SSE
+  - renders agent status, events, tool calls, report output, final decision, and footer stats from shared snapshots
+  - supports reset and export actions
+- Added desktop-first responsive styling in `tradingagents/web/static/styles.css`.
+- Preserved the single-page, server-rendered HTML/CSS/JS approach with no separate frontend toolchain.
+
+Key outcome:
+
+- A user can now drive the core workflow from the browser with a real dashboard layout and live shared-runtime-backed updates.
+- The browser client now consumes the same snapshot contract as the CLI.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
+
+### Web Dashboard Run Restore, Stop Flow, And Layout Refinements
+
+Issue:
+
+- The first browser dashboard cut exposed several real-world usability problems during manual validation:
+  - the initial empty state locked the form because it looked like an active run
+  - refreshing the page lost the visible session while the backend still enforced the single-active-run guard
+  - stop requests showed success feedback but did not explain the delay before cancellation completed
+  - active-run configuration values were not restored into the setup form on refresh
+  - the desktop layout overused vertical space and needed multiple passes to improve density and panel readability
+
+Fix:
+
+- Added browser-side idle handling so the setup form remains editable when no run exists.
+- Added active-run restore support through:
+  - `GET /api/runs/active`
+  - browser-side persisted `runId`
+  - reconnect logic on page load and on `409` active-run conflicts
+- Added cooperative stop support across the shared runtime and web service, including:
+  - runtime cancellation hooks and terminal canceled snapshots
+  - `POST /api/runs/{id}/stop`
+  - immediate `stopping` UI feedback while the current LLM/tool step finishes
+  - clearer stop-state copy explaining that cancellation waits for the active call to yield control
+- Restored active run inputs back into the Analysis Configuration panel from snapshot `selected_inputs` after refresh.
+- Refined the desktop dashboard layout to use horizontal space more effectively, including:
+  - a more compact header
+  - a denser setup panel
+  - tabbed report viewing for the results area
+  - moving the stats strip to the upper portion of the page
+  - restoring page-level vertical scrolling after fixed-height panel constraints proved too fragile in practice
+
+Key outcome:
+
+- The browser dashboard now reconnects reliably to active runs, supports cooperative stop/cancel behavior more transparently, restores run inputs after refresh, and uses a more practical desktop layout without the earlier overlap and lock-state confusion.
 
 ### Google `base_url` Forwarding Bug
 
@@ -191,7 +248,7 @@ Expanded:
 
 Current checkpoint:
 
-- Full test suite passes after the latest runtime runner extraction.
+- Full test suite passes after the dashboard UI implementation checkpoint and subsequent browser validation fixes.
 
 ## Current Status Against The Plan
 
@@ -203,13 +260,15 @@ Completed:
 - Phase 3
 - Phase 4
 - Phase 5
+- Phase 6
 
 Next planned work:
 
-- Phase 6. Build Web Dashboard UI
+- Phase 7. Report Export And Persistence Alignment
 
 ## Notes For The Next Stage
 
-- The backend endpoints and SSE stream are now available for a browser client to consume directly.
-- The next step should build the dashboard UI shell and wire it to `/api/options`, `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/events`, and `/api/runs/{id}/export`.
-- The current static page is intentionally minimal and should be replaced by the actual dashboard in the next phase.
+- The browser dashboard is now wired to the backend contract and can start runs, render snapshot updates, and request exports.
+- The browser dashboard has also gone through a post-Phase-6 stabilization pass covering reconnect behavior, cooperative stop UX, restored setup-form state, and desktop layout refinement.
+- The next step should tighten export/persistence behavior so Web outputs align deliberately with the shared runtime artifact structure and failed/partial runs are handled cleanly.
+- Browser-level automation has not been added yet because no Playwright MCP server is available in this session; current validation relies on backend tests and local script/server checks.

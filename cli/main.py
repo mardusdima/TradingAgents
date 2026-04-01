@@ -506,6 +506,8 @@ def run_analysis():
                 result.final_state,
                 run_request.ticker,
                 save_path,
+                runtime_report_dir=result.artifacts.report_dir,
+                runtime_log_file=result.artifacts.log_file,
             )
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")

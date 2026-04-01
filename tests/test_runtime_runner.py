@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -7,6 +8,7 @@ from langchain_core.messages import AIMessage
 
 from tradingagents.runtime.options import DEFAULT_BACKEND_URL
 from tradingagents.runtime.runner import (
+    RuntimeRunnerCanceled,
     RuntimeRunnerError,
     RuntimeRunnerHooks,
     TradingAgentsRuntimeRunner,
@@ -153,6 +155,37 @@ class RuntimeRunnerTests(unittest.TestCase):
         self.assertEqual(snapshot.status, RunLifecycleState.FAILED)
         self.assertTrue(failed)
         self.assertEqual(failed[0][0].code, "runtime_error")
+
+    def test_runner_can_cancel_before_stream_processing(self):
+        stop_requested = threading.Event()
+        canceled = []
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_patch = {"results_dir": tmp_dir}
+            with patch.dict("tradingagents.runtime.runner.DEFAULT_CONFIG", config_patch, clear=False):
+                runner = TradingAgentsRuntimeRunner(graph_factory=FakeTradingGraph)
+                with self.assertRaises(RuntimeRunnerCanceled) as ctx:
+                    runner.run(
+                        self.request,
+                        hooks=RuntimeRunnerHooks(
+                            on_snapshot_updated=lambda snapshot: (
+                                stop_requested.set()
+                                if snapshot.status == RunLifecycleState.RUNNING
+                                else None
+                            ),
+                            on_run_canceled=lambda error, snapshot: canceled.append((error, snapshot)),
+                            should_stop=stop_requested.is_set,
+                        ),
+                    )
+
+        error = ctx.exception.run_error
+        snapshot = ctx.exception.snapshot
+        self.assertEqual(error.code, "canceled")
+        self.assertEqual(snapshot.status, RunLifecycleState.CANCELED)
+        self.assertTrue(snapshot.messages)
+        self.assertIn("Run canceled by user request", snapshot.messages[-1].content)
+        self.assertTrue(canceled)
+        self.assertEqual(canceled[0][0].code, "canceled")
 
 
 if __name__ == "__main__":

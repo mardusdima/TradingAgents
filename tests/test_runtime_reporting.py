@@ -48,11 +48,22 @@ class RuntimeReportingTests(unittest.TestCase):
     def test_export_report_bundle_writes_expected_structure(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             save_path = Path(tmp_dir) / "exported_report"
+            runtime_dir = Path(tmp_dir) / "runtime"
+            runtime_reports_dir = runtime_dir / "reports"
+            runtime_reports_dir.mkdir(parents=True)
+            (runtime_reports_dir / "market_report.md").write_text(
+                "Runtime market section",
+                encoding="utf-8",
+            )
+            runtime_log_file = runtime_dir / "message_tool.log"
+            runtime_log_file.write_text("runtime log line\n", encoding="utf-8")
             report_file = export_report_bundle(
                 SAMPLE_FINAL_STATE,
                 "SPY",
                 save_path,
                 generated_at=dt.datetime(2026, 4, 1, 9, 30, 0),
+                runtime_report_dir=runtime_reports_dir,
+                runtime_log_file=runtime_log_file,
             )
 
             self.assertTrue(report_file.exists())
@@ -61,6 +72,16 @@ class RuntimeReportingTests(unittest.TestCase):
             self.assertTrue((save_path / "3_trading" / "trader.md").exists())
             self.assertTrue((save_path / "4_risk" / "neutral.md").exists())
             self.assertTrue((save_path / "5_portfolio" / "decision.md").exists())
+            self.assertTrue((save_path / "reports" / "market_report.md").exists())
+            self.assertEqual(
+                (save_path / "reports" / "market_report.md").read_text(encoding="utf-8"),
+                "Runtime market section",
+            )
+            self.assertTrue((save_path / "message_tool.log").exists())
+            self.assertIn(
+                "runtime log line",
+                (save_path / "message_tool.log").read_text(encoding="utf-8"),
+            )
             self.assertIn("Portfolio decision", report_file.read_text(encoding="utf-8"))
 
 
