@@ -118,10 +118,7 @@ Install the package and its dependencies:
 pip install .
 ```
 
-If you want to use the Web UI, install the web server dependencies as well:
-```bash
-pip install fastapi uvicorn
-```
+The package install now includes the local Web UI dependencies as well, so the CLI and Web UI can be launched from the same environment.
 
 ### Required APIs
 
@@ -172,7 +169,7 @@ TradingAgents also includes a local dashboard-style Web UI built on FastAPI. It 
 
 Start the Web UI server:
 ```bash
-uvicorn tradingagents.web.app:app --reload
+tradingagents-web --reload
 ```
 
 Then open the app in your browser:
@@ -182,10 +179,58 @@ http://127.0.0.1:8000
 
 You can also start it with Python directly:
 ```bash
-python -m uvicorn tradingagents.web.app:app --reload
+python -m tradingagents.web.app --reload
 ```
 
-The v1 Web UI is intended for local development and currently supports one active run at a time.
+Or, if you prefer to run Uvicorn explicitly:
+```bash
+uvicorn tradingagents.web.app:app --reload
+```
+
+What the Web UI currently supports:
+
+- The same core run inputs as the CLI
+- Live agent status, event feed, tool calls, current report, compiled report, and footer stats
+- Exporting the final report bundle from the browser
+- Reconnecting to the active in-memory run after a page refresh
+- Cooperative stop requests for the active run
+
+Known v1 limitations:
+
+- The Web UI is intended for local development and currently supports one active run at a time.
+- There is no auth, multi-user session support, persistent run history page, or database-backed storage in v1.
+- The runtime still depends on process-global dataflow configuration, so concurrent Web runs are intentionally blocked.
+- Browser-level automated UI coverage has not been added yet; validation currently relies on the shared runtime tests, API tests, and local server checks.
+
+Web UI screenshot placeholder:
+
+- The implemented dashboard is a three-column desktop-first layout with Setup, Activity, and Results panels. A dedicated screenshot asset can be added in a follow-up docs pass.
+
+### Shared Runtime Architecture
+
+The CLI and Web UI now share the same runtime execution path instead of duplicating orchestration logic in two presentation layers.
+
+Key shared modules:
+
+- `tradingagents/runtime/options.py`: source of truth for provider, model, analyst, depth, and language options
+- `tradingagents/runtime/validation.py`: request normalization and validation shared by CLI and Web
+- `tradingagents/runtime/session_state.py`: stream-chunk processing, agent state transitions, event history, and report accumulation
+- `tradingagents/runtime/reporting.py`: compiled report generation and export bundle handling
+- `tradingagents/runtime/runner.py`: end-to-end run orchestration used by both interfaces
+- `tradingagents/web/api.py`: Web-specific API/service layer over the shared runtime
+- `cli/main.py`: CLI presentation layer over the shared runtime
+
+This split is intentional: future work should keep graph execution, validation, session-state updates, and export behavior in the shared runtime so the CLI and Web UI stay aligned.
+
+### Local Development Notes
+
+Recommended local commands:
+
+- CLI: `tradingagents` or `python -m cli.main`
+- Web UI: `tradingagents-web --reload` or `python -m tradingagents.web.app --reload`
+- Full test suite: `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+
+If you are developing the Web UI locally, remember that refreshing the page reconnects to the active in-memory run, but restarting the server clears that in-memory session state.
 
 ## TradingAgents Package
 

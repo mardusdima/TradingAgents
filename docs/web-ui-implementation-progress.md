@@ -205,6 +205,26 @@ Key outcome:
 - The Web UI now has first-class packaging support instead of relying only on a raw `uvicorn` module path.
 - A developer can start the browser dashboard from an installed environment with a stable command surface.
 
+### Phase 10. Documentation
+
+Completed:
+
+- Updated `README.md` to reflect the implemented Web UI workflow and launch commands.
+- Documented the Web UI feature surface and current v1 limitations, including the single-active-run restriction.
+- Added a shared runtime architecture section to describe how the CLI and Web UI now share:
+  - runtime options
+  - validation
+  - session state
+  - reporting/export
+  - runner orchestration
+- Added local development notes for CLI, Web UI, and test execution.
+- Added a Web UI screenshot placeholder note until a dedicated dashboard screenshot asset is captured.
+
+Key outcome:
+
+- The repository now documents how to run and develop both interfaces from the same environment.
+- The shared-runtime architecture and current Web UI constraints are explicit, which should reduce the risk of future CLI/Web logic drift.
+
 ## Additional Bug Fixes Landed During Implementation
 
 These were discovered while validating the refactor work and were fixed as part of the implementation checkpoint.
@@ -308,7 +328,7 @@ Expanded:
 
 Current checkpoint:
 
-- Focused runtime and web validation passes after the Phase 7, Phase 8, and Phase 9 checkpoints.
+- Full test suite passes, the Web server restart is verified, and the documentation now reflects the implemented Web UI workflow through Phase 10.
 
 ## Current Status Against The Plan
 
@@ -324,13 +344,14 @@ Completed:
 - Phase 7
 - Phase 8
 - Phase 9
+- Phase 10
 
 Next planned work:
 
-- Phase 10. Documentation
+- No further phases remain in the current Web UI implementation plan.
 
 ## Notes For The Next Stage
 
-- The runtime and browser layers now have a stable export path and a packaged launch path for local development.
-- The next step should update project-facing documentation so the Web workflow, single-active-run limitation, and shared-runtime architecture are clearly described.
+- The main implementation plan is now complete through documentation.
+- Follow-up work can focus on post-plan improvements such as browser automation, multi-run architecture changes, or visual polish if needed.
 - Browser-level automation has not been added yet because no Playwright MCP server is available in this session; current validation still relies on unit/API tests and local server checks.
