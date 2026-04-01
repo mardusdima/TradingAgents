@@ -1,5 +1,13 @@
 import os
 
+from tradingagents.runtime.options import (
+    DEFAULT_BACKEND_URL,
+    DEFAULT_DEEP_MODEL,
+    DEFAULT_OUTPUT_LANGUAGE,
+    DEFAULT_PROVIDER,
+    DEFAULT_QUICK_MODEL,
+)
+
 DEFAULT_CONFIG = {
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
     "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", "./results"),
@@ -8,17 +16,17 @@ DEFAULT_CONFIG = {
         "dataflows/data_cache",
     ),
     # LLM settings
-    "llm_provider": "openai",
-    "deep_think_llm": "gpt-5.4",
-    "quick_think_llm": "gpt-5.4-mini",
-    "backend_url": "https://api.openai.com/v1",
+    "llm_provider": DEFAULT_PROVIDER.value,
+    "deep_think_llm": DEFAULT_DEEP_MODEL,
+    "quick_think_llm": DEFAULT_QUICK_MODEL,
+    "backend_url": DEFAULT_BACKEND_URL,
     # Provider-specific thinking configuration
     "google_thinking_level": None,      # "high", "minimal", etc.
     "openai_reasoning_effort": None,    # "medium", "high", "low"
     "anthropic_effort": None,           # "high", "medium", "low"
     # Output language for analyst reports and final decision
     # Internal agent debate stays in English for reasoning quality
-    "output_language": "English",
+    "output_language": DEFAULT_OUTPUT_LANGUAGE,
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,

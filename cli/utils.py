@@ -5,16 +5,22 @@ from rich.console import Console
 
 from cli.models import AnalystType
 from tradingagents.llm_clients.model_catalog import get_model_options
+from tradingagents.runtime.options import (
+    ANALYST_OPTIONS,
+    ANTHROPIC_EFFORT_OPTIONS,
+    GOOGLE_THINKING_LEVEL_OPTIONS,
+    OPENAI_REASONING_EFFORT_OPTIONS,
+    OUTPUT_LANGUAGE_OPTIONS,
+    PROVIDER_OPTIONS,
+    RESEARCH_DEPTH_OPTIONS,
+    TICKER_INPUT_EXAMPLES,
+)
 
 console = Console()
 
-TICKER_INPUT_EXAMPLES = "Examples: SPY, CNC.TO, 7203.T, 0700.HK"
-
 ANALYST_ORDER = [
-    ("Market Analyst", AnalystType.MARKET),
-    ("Social Media Analyst", AnalystType.SOCIAL),
-    ("News Analyst", AnalystType.NEWS),
-    ("Fundamentals Analyst", AnalystType.FUNDAMENTALS),
+    (option.label, AnalystType(option.value.value))
+    for option in ANALYST_OPTIONS
 ]
 
 
@@ -105,17 +111,11 @@ def select_analysts() -> List[AnalystType]:
 def select_research_depth() -> int:
     """Select research depth using an interactive selection."""
 
-    # Define research depth options with their corresponding values
-    DEPTH_OPTIONS = [
-        ("Shallow - Quick research, few debate and strategy discussion rounds", 1),
-        ("Medium - Middle ground, moderate debate rounds and strategy discussion", 3),
-        ("Deep - Comprehensive research, in depth debate and strategy discussion", 5),
-    ]
-
     choice = questionary.select(
         "Select Your [Research Depth]:",
         choices=[
-            questionary.Choice(display, value=value) for display, value in DEPTH_OPTIONS
+            questionary.Choice(option.label, value=option.value)
+            for option in RESEARCH_DEPTH_OPTIONS
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -189,21 +189,15 @@ def select_deep_thinking_agent(provider) -> str:
 
 def select_llm_provider() -> tuple[str, str]:
     """Select the OpenAI api url using interactive selection."""
-    # Define OpenAI api options with their corresponding endpoints
-    BASE_URLS = [
-        ("OpenAI", "https://api.openai.com/v1"),
-        ("Google", "https://generativelanguage.googleapis.com/v1"),
-        ("Anthropic", "https://api.anthropic.com/"),
-        ("xAI", "https://api.x.ai/v1"),
-        ("Openrouter", "https://openrouter.ai/api/v1"),
-        ("Ollama", "http://localhost:11434/v1"),
-    ]
-    
+
     choice = questionary.select(
         "Select your LLM Provider:",
         choices=[
-            questionary.Choice(display, value=(display, value))
-            for display, value in BASE_URLS
+            questionary.Choice(
+                option.label,
+                value=(option.label, option.backend_url),
+            )
+            for option in PROVIDER_OPTIONS
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -227,14 +221,12 @@ def select_llm_provider() -> tuple[str, str]:
 
 def ask_openai_reasoning_effort() -> str:
     """Ask for OpenAI reasoning effort level."""
-    choices = [
-        questionary.Choice("Medium (Default)", "medium"),
-        questionary.Choice("High (More thorough)", "high"),
-        questionary.Choice("Low (Faster)", "low"),
-    ]
     return questionary.select(
         "Select Reasoning Effort:",
-        choices=choices,
+        choices=[
+            questionary.Choice(option.label, option.value)
+            for option in OPENAI_REASONING_EFFORT_OPTIONS
+        ],
         style=questionary.Style([
             ("selected", "fg:cyan noinherit"),
             ("highlighted", "fg:cyan noinherit"),
@@ -251,9 +243,8 @@ def ask_anthropic_effort() -> str | None:
     return questionary.select(
         "Select Effort Level:",
         choices=[
-            questionary.Choice("High (recommended)", "high"),
-            questionary.Choice("Medium (balanced)", "medium"),
-            questionary.Choice("Low (faster, cheaper)", "low"),
+            questionary.Choice(option.label, option.value)
+            for option in ANTHROPIC_EFFORT_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:cyan noinherit"),
@@ -272,8 +263,8 @@ def ask_gemini_thinking_config() -> str | None:
     return questionary.select(
         "Select Thinking Mode:",
         choices=[
-            questionary.Choice("Enable Thinking (recommended)", "high"),
-            questionary.Choice("Minimal/Disable Thinking", "minimal"),
+            questionary.Choice(option.label, option.value)
+            for option in GOOGLE_THINKING_LEVEL_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:green noinherit"),
@@ -288,18 +279,8 @@ def ask_output_language() -> str:
     choice = questionary.select(
         "Select Output Language:",
         choices=[
-            questionary.Choice("English (default)", "English"),
-            questionary.Choice("Chinese (中文)", "Chinese"),
-            questionary.Choice("Japanese (日本語)", "Japanese"),
-            questionary.Choice("Korean (한국어)", "Korean"),
-            questionary.Choice("Hindi (हिन्दी)", "Hindi"),
-            questionary.Choice("Spanish (Español)", "Spanish"),
-            questionary.Choice("Portuguese (Português)", "Portuguese"),
-            questionary.Choice("French (Français)", "French"),
-            questionary.Choice("German (Deutsch)", "German"),
-            questionary.Choice("Arabic (العربية)", "Arabic"),
-            questionary.Choice("Russian (Русский)", "Russian"),
-            questionary.Choice("Custom language", "custom"),
+            questionary.Choice(option.label, option.value)
+            for option in OUTPUT_LANGUAGE_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:yellow noinherit"),
