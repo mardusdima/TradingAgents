@@ -39,6 +39,19 @@ class RuntimeSessionStateTests(unittest.TestCase):
         )
         self.assertEqual(len(self.state.messages), 1)
 
+    def test_messages_without_ids_are_not_dropped(self):
+        self.state.init_for_analysis(["market"])
+
+        self.state.process_chunk(
+            {
+                "messages": [AIMessage(content="Streaming update without id")],
+            }
+        )
+
+        self.assertEqual(len(self.state.messages), 1)
+        self.assertEqual(self.state.messages[0].content, "Streaming update without id")
+        self.assertEqual(self.state.events[0].event_type, EventType.MESSAGE)
+
     def test_debate_trader_and_risk_chunks_accumulate_structured_reports(self):
         self.state.init_for_analysis(["market"])
         self.state.start_run()

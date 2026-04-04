@@ -393,7 +393,7 @@ class RuntimeSessionState:
 
         last_message = messages[-1]
         msg_id = getattr(last_message, "id", None)
-        if msg_id == self._last_message_id:
+        if msg_id is not None and msg_id == self._last_message_id:
             return
 
         self._last_message_id = msg_id

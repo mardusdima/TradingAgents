@@ -43,3 +43,4 @@ include = ["tradingagents*", "cli*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
+tradingagents = ["web/static/*", "web/templates/*"]
