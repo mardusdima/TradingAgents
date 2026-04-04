@@ -51,6 +51,28 @@ class WebAppTests(unittest.TestCase):
             ["web/static/*", "web/templates/*"],
         )
 
+    def test_validation_error_targets_match_runtime_field_names(self):
+        web_dir = Path(__file__).resolve().parents[1] / "tradingagents" / "web"
+        template = (web_dir / "templates" / "index.html").read_text(encoding="utf-8")
+        script = (web_dir / "static" / "app.js").read_text(encoding="utf-8")
+
+        for field in (
+            "ticker",
+            "analysis_date",
+            "output_language",
+            "research_depth",
+            "llm_provider",
+            "shallow_thinker",
+            "deep_thinker",
+            "analysts",
+        ):
+            self.assertIn(f'id="{field}-error"', template)
+
+        self.assertIn("const FIELD_ERROR_TARGETS = {", script)
+        self.assertIn('google_thinking_level: "provider-specific-error"', script)
+        self.assertIn('openai_reasoning_effort: "provider-specific-error"', script)
+        self.assertIn('anthropic_effort: "provider-specific-error"', script)
+
 
 if __name__ == "__main__":
     unittest.main()

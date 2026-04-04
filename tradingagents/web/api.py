@@ -370,6 +370,7 @@ def create_api_router() -> APIRouter:
     def get_run_events(session_id: str, request: Request):
         service = get_web_service(request)
         try:
+            service.get_snapshot(session_id)
             iterator = service.stream_events(session_id)
         except SessionNotFoundError as exc:
             raise HTTPException(

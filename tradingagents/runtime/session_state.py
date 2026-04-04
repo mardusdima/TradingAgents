@@ -5,6 +5,7 @@ import datetime as dt
 from collections import deque
 from typing import Any, Callable, Deque, Dict, Iterable, Optional
 
+from tradingagents.runtime.reporting import compile_structured_report
 from tradingagents.runtime.schemas import (
     AgentStatusSnapshot,
     EventType,
@@ -297,68 +298,7 @@ class RuntimeSessionState:
         self._update_final_report()
 
     def _update_final_report(self) -> None:
-        report_parts = []
-
-        analyst_sections = [
-            ("market_report", "Market Analysis"),
-            ("sentiment_report", "Social Sentiment"),
-            ("news_report", "News Analysis"),
-            ("fundamentals_report", "Fundamentals Analysis"),
-        ]
-        analyst_content = [
-            f"### {title}\n{self.structured_report_sections[section]}"
-            for section, title in analyst_sections
-            if self.structured_report_sections.get(section)
-        ]
-        if analyst_content:
-            report_parts.append("## Analyst Team Reports")
-            report_parts.extend(analyst_content)
-
-        research_content = []
-        if self.structured_report_sections.get("bull_research"):
-            research_content.append(
-                f"### Bull Researcher Analysis\n{self.structured_report_sections['bull_research']}"
-            )
-        if self.structured_report_sections.get("bear_research"):
-            research_content.append(
-                f"### Bear Researcher Analysis\n{self.structured_report_sections['bear_research']}"
-            )
-        if self.structured_report_sections.get("investment_plan"):
-            research_content.append(
-                f"### Research Manager Decision\n{self.structured_report_sections['investment_plan']}"
-            )
-        if research_content:
-            report_parts.append("## Research Team Decision")
-            report_parts.extend(research_content)
-
-        if self.structured_report_sections.get("trader_investment_plan"):
-            report_parts.append("## Trading Team Plan")
-            report_parts.append(self.structured_report_sections["trader_investment_plan"])
-
-        risk_content = []
-        if self.structured_report_sections.get("aggressive_risk"):
-            risk_content.append(
-                f"### Aggressive Analyst Analysis\n{self.structured_report_sections['aggressive_risk']}"
-            )
-        if self.structured_report_sections.get("conservative_risk"):
-            risk_content.append(
-                f"### Conservative Analyst Analysis\n{self.structured_report_sections['conservative_risk']}"
-            )
-        if self.structured_report_sections.get("neutral_risk"):
-            risk_content.append(
-                f"### Neutral Analyst Analysis\n{self.structured_report_sections['neutral_risk']}"
-            )
-        if risk_content:
-            report_parts.append("## Risk Management Team Decision")
-            report_parts.extend(risk_content)
-
-        if self.structured_report_sections.get("final_trade_decision"):
-            report_parts.append("## Portfolio Management Decision")
-            report_parts.append(
-                f"### Portfolio Manager Decision\n{self.structured_report_sections['final_trade_decision']}"
-            )
-
-        self.final_report = "\n\n".join(report_parts) if report_parts else None
+        self.final_report = compile_structured_report(self.structured_report_sections)
 
     def _record_event(
         self,

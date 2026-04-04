@@ -329,6 +329,12 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("No active run", response.json()["detail"]["message"])
 
+    def test_events_endpoint_returns_404_for_unknown_run(self):
+        response = self.client.get("/api/runs/does-not-exist/events")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("does-not-exist", response.json()["detail"]["message"])
+
     def test_run_creation_snapshot_retrieval_events_and_export(self):
         create_response = self.client.post("/api/runs", json=make_request_payload())
         self.assertEqual(create_response.status_code, 201)

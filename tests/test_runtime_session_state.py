@@ -2,6 +2,7 @@ import unittest
 
 from langchain_core.messages import AIMessage
 
+from tradingagents.runtime.reporting import compile_structured_report
 from tradingagents.runtime.schemas import EventType, RunLifecycleState
 from tradingagents.runtime.session_state import RuntimeSessionState
 
@@ -93,9 +94,13 @@ class RuntimeSessionStateTests(unittest.TestCase):
         self.assertEqual(self.state.structured_report_sections["neutral_risk"], "Neutral stance")
         self.assertEqual(self.state.structured_report_sections["final_trade_decision"], "Portfolio decision")
         self.assertEqual(self.state.agent_status["Portfolio Manager"], "completed")
-        self.assertIn("Bull Researcher Analysis", self.state.final_report)
-        self.assertIn("Trader plan", self.state.final_report)
-        self.assertIn("Portfolio Manager Decision", self.state.final_report)
+        self.assertEqual(
+            self.state.final_report,
+            compile_structured_report(self.state.structured_report_sections),
+        )
+        self.assertIn("## II. Research Team Decision", self.state.final_report)
+        self.assertIn("### Trader", self.state.final_report)
+        self.assertIn("### Portfolio Manager", self.state.final_report)
         self.assertEqual(self.state.get_completed_reports_count(), 4)
 
     def test_snapshot_contains_structured_history_and_events(self):

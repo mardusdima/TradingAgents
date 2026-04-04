@@ -46,6 +46,12 @@ const PROVIDER_SPECIFIC_FIELDS = {
   },
 };
 
+const FIELD_ERROR_TARGETS = {
+  google_thinking_level: "provider-specific-error",
+  openai_reasoning_effort: "provider-specific-error",
+  anthropic_effort: "provider-specific-error",
+};
+
 const state = {
   options: null,
   currentSnapshot: createEmptySnapshot(),
@@ -478,7 +484,8 @@ function validateFormPayload(payload) {
 
 function applyValidationIssues(issues) {
   for (const issue of issues) {
-    const node = document.getElementById(`${issue.field}-error`);
+    const targetId = FIELD_ERROR_TARGETS[issue.field] || `${issue.field}-error`;
+    const node = document.getElementById(targetId);
     if (node) {
       node.textContent = issue.message;
     }

@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 
 from tradingagents.runtime.reporting import (
+    compile_structured_report,
     compile_complete_report,
     export_report_bundle,
+    structured_report_sections_from_final_state,
 )
 
 
@@ -44,6 +46,23 @@ class RuntimeReportingTests(unittest.TestCase):
         self.assertIn("## III. Trading Team Plan", report)
         self.assertIn("## IV. Risk Management Team Decision", report)
         self.assertIn("## V. Portfolio Manager Decision", report)
+
+    def test_compile_structured_report_matches_complete_report_body(self):
+        structured_sections = structured_report_sections_from_final_state(
+            SAMPLE_FINAL_STATE
+        )
+
+        body = compile_structured_report(structured_sections)
+        report = compile_complete_report(
+            SAMPLE_FINAL_STATE,
+            "SPY",
+            generated_at=dt.datetime(2026, 4, 1, 9, 30, 0),
+        )
+
+        self.assertIsNotNone(body)
+        self.assertTrue(report.endswith(body))
+        self.assertIn("### Trader", body)
+        self.assertIn("### Portfolio Manager", body)
 
     def test_export_report_bundle_writes_expected_structure(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
