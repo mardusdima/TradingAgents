@@ -1,20 +1,37 @@
 import questionary
 from typing import List, Optional, Tuple, Dict
 
+from prompt_toolkit.application import Application
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.layout import Layout as PTLayout
+from prompt_toolkit.layout.containers import Window as PTWindow
+from prompt_toolkit.layout.controls import FormattedTextControl as PTFormattedTextControl
 from rich.console import Console
 
 from cli.models import AnalystType
 from tradingagents.llm_clients.model_catalog import get_model_options
+from tradingagents.runtime.options import (
+    ANALYST_OPTIONS,
+    ANTHROPIC_EFFORT_OPTIONS,
+    GOOGLE_THINKING_LEVEL_OPTIONS,
+    OPENAI_REASONING_EFFORT_OPTIONS,
+    OUTPUT_LANGUAGE_OPTIONS,
+    PROVIDER_OPTIONS,
+    RESEARCH_DEPTH_OPTIONS,
+    TICKER_INPUT_EXAMPLES,
+)
+from tradingagents.runtime.validation import (
+    RunRequestValidationError,
+    normalize_analysis_date,
+    normalize_ticker_symbol as runtime_normalize_ticker_symbol,
+)
 
 console = Console()
 
-TICKER_INPUT_EXAMPLES = "Examples: SPY, CNC.TO, 7203.T, 0700.HK"
-
 ANALYST_ORDER = [
-    ("Market Analyst", AnalystType.MARKET),
-    ("Social Media Analyst", AnalystType.SOCIAL),
-    ("News Analyst", AnalystType.NEWS),
-    ("Fundamentals Analyst", AnalystType.FUNDAMENTALS),
+    (option.label, AnalystType(option.value.value))
+    for option in ANALYST_OPTIONS
 ]
 
 
@@ -40,21 +57,16 @@ def get_ticker() -> str:
 
 def normalize_ticker_symbol(ticker: str) -> str:
     """Normalize ticker input while preserving exchange suffixes."""
-    return ticker.strip().upper()
+    return runtime_normalize_ticker_symbol(ticker)
 
 
 def get_analysis_date() -> str:
     """Prompt the user to enter a date in YYYY-MM-DD format."""
-    import re
-    from datetime import datetime
-
     def validate_date(date_str: str) -> bool:
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-            return False
         try:
-            datetime.strptime(date_str, "%Y-%m-%d")
+            normalize_analysis_date(date_str)
             return True
-        except ValueError:
+        except RunRequestValidationError:
             return False
 
     date = questionary.text(
@@ -77,23 +89,8 @@ def get_analysis_date() -> str:
 
 
 def select_analysts() -> List[AnalystType]:
-    """Select analysts using an interactive checkbox."""
-    choices = questionary.checkbox(
-        "Select Your [Analysts Team]:",
-        choices=[
-            questionary.Choice(display, value=value) for display, value in ANALYST_ORDER
-        ],
-        instruction="\n- Press Space to select/unselect analysts\n- Press 'a' to select/unselect all\n- Press Enter when done",
-        validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
-        style=questionary.Style(
-            [
-                ("checkbox-selected", "fg:green"),
-                ("selected", "fg:green noinherit"),
-                ("highlighted", "noinherit"),
-                ("pointer", "noinherit"),
-            ]
-        ),
-    ).ask()
+    """Select analysts using an interactive multi-select prompt."""
+    choices = _prompt_analyst_selection()
 
     if not choices:
         console.print("\n[red]No analysts selected. Exiting...[/red]")
@@ -102,20 +99,134 @@ def select_analysts() -> List[AnalystType]:
     return choices
 
 
+def _prompt_analyst_selection() -> List[AnalystType]:
+    app = _build_analyst_selection_app()
+    return app.run()
+
+
+def _build_analyst_selection_app() -> Application:
+    selected_indices: set[int] = set()
+    cursor_index = 0
+    error_message = ""
+
+    style = questionary.Style(
+        [
+            ("question", "fg:green bold"),
+            ("instruction", "fg:#888888"),
+            ("pointer", "fg:green bold"),
+            ("selected-marker", "fg:green bold"),
+            ("unselected-marker", "fg:#888888"),
+            ("text", ""),
+            ("error", "fg:red bold"),
+        ]
+    )
+
+    def is_all_selected() -> bool:
+        return len(selected_indices) == len(ANALYST_ORDER)
+
+    def toggle_current() -> None:
+        nonlocal error_message
+        error_message = ""
+        if cursor_index in selected_indices:
+            selected_indices.remove(cursor_index)
+        else:
+            selected_indices.add(cursor_index)
+
+    def toggle_all() -> None:
+        nonlocal error_message
+        error_message = ""
+        if is_all_selected():
+            selected_indices.clear()
+        else:
+            selected_indices.clear()
+            selected_indices.update(range(len(ANALYST_ORDER)))
+
+    def get_prompt_text():
+        fragments = [
+            ("class:question", "Select Your [Analysts Team]:\n"),
+            (
+                "class:instruction",
+                "- Press Space to select/unselect analysts\n"
+                "- Press 'a' to select/unselect all\n"
+                "- Press Enter when done\n\n",
+            ),
+        ]
+
+        for index, (label, _value) in enumerate(ANALYST_ORDER):
+            pointer = "›" if index == cursor_index else " "
+            marker = "●" if index in selected_indices else "○"
+            marker_style = (
+                "class:selected-marker"
+                if index in selected_indices
+                else "class:unselected-marker"
+            )
+            pointer_style = "class:pointer" if index == cursor_index else "class:text"
+            fragments.append((pointer_style, f"{pointer} "))
+            fragments.append((marker_style, f"{marker} "))
+            fragments.append(("class:text", f"{label}\n"))
+
+        if error_message:
+            fragments.append(("class:error", f"\n{error_message}"))
+
+        return fragments
+
+    kb = KeyBindings()
+
+    @kb.add(Keys.Up, eager=True)
+    @kb.add("k", eager=True)
+    def _move_up(_event) -> None:
+        nonlocal cursor_index
+        cursor_index = (cursor_index - 1) % len(ANALYST_ORDER)
+
+    @kb.add(Keys.Down, eager=True)
+    @kb.add("j", eager=True)
+    def _move_down(_event) -> None:
+        nonlocal cursor_index
+        cursor_index = (cursor_index + 1) % len(ANALYST_ORDER)
+
+    @kb.add(" ", eager=True)
+    def _toggle(_event) -> None:
+        toggle_current()
+
+    @kb.add("a", eager=True)
+    @kb.add("A", eager=True)
+    @kb.add(Keys.ControlA, eager=True)
+    def _toggle_all(_event) -> None:
+        toggle_all()
+
+    @kb.add(Keys.ControlC, eager=True)
+    @kb.add(Keys.ControlQ, eager=True)
+    def _abort(event) -> None:
+        event.app.exit(exception=KeyboardInterrupt)
+
+    @kb.add(Keys.Enter, eager=True)
+    @kb.add(Keys.ControlM, eager=True)
+    def _submit(event) -> None:
+        nonlocal error_message
+        if not selected_indices:
+            error_message = "You must select at least one analyst."
+            return
+        event.app.exit(
+            result=[ANALYST_ORDER[index][1] for index in sorted(selected_indices)]
+        )
+
+    control = PTFormattedTextControl(get_prompt_text, focusable=True)
+    return Application(
+        layout=PTLayout(PTWindow(content=control, always_hide_cursor=True)),
+        key_bindings=kb,
+        style=style,
+        full_screen=False,
+    )
+
+
 def select_research_depth() -> int:
     """Select research depth using an interactive selection."""
-
-    # Define research depth options with their corresponding values
-    DEPTH_OPTIONS = [
-        ("Shallow - Quick research, few debate and strategy discussion rounds", 1),
-        ("Medium - Middle ground, moderate debate rounds and strategy discussion", 3),
-        ("Deep - Comprehensive research, in depth debate and strategy discussion", 5),
-    ]
 
     choice = questionary.select(
         "Select Your [Research Depth]:",
         choices=[
-            questionary.Choice(display, value=value) for display, value in DEPTH_OPTIONS
+            questionary.Choice(option.label, value=option.value)
+            for option in RESEARCH_DEPTH_OPTIONS
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -189,21 +300,15 @@ def select_deep_thinking_agent(provider) -> str:
 
 def select_llm_provider() -> tuple[str, str]:
     """Select the OpenAI api url using interactive selection."""
-    # Define OpenAI api options with their corresponding endpoints
-    BASE_URLS = [
-        ("OpenAI", "https://api.openai.com/v1"),
-        ("Google", "https://generativelanguage.googleapis.com/v1"),
-        ("Anthropic", "https://api.anthropic.com/"),
-        ("xAI", "https://api.x.ai/v1"),
-        ("Openrouter", "https://openrouter.ai/api/v1"),
-        ("Ollama", "http://localhost:11434/v1"),
-    ]
-    
+
     choice = questionary.select(
         "Select your LLM Provider:",
         choices=[
-            questionary.Choice(display, value=(display, value))
-            for display, value in BASE_URLS
+            questionary.Choice(
+                option.label,
+                value=(option.label, option.backend_url),
+            )
+            for option in PROVIDER_OPTIONS
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -227,14 +332,12 @@ def select_llm_provider() -> tuple[str, str]:
 
 def ask_openai_reasoning_effort() -> str:
     """Ask for OpenAI reasoning effort level."""
-    choices = [
-        questionary.Choice("Medium (Default)", "medium"),
-        questionary.Choice("High (More thorough)", "high"),
-        questionary.Choice("Low (Faster)", "low"),
-    ]
     return questionary.select(
         "Select Reasoning Effort:",
-        choices=choices,
+        choices=[
+            questionary.Choice(option.label, option.value)
+            for option in OPENAI_REASONING_EFFORT_OPTIONS
+        ],
         style=questionary.Style([
             ("selected", "fg:cyan noinherit"),
             ("highlighted", "fg:cyan noinherit"),
@@ -251,9 +354,8 @@ def ask_anthropic_effort() -> str | None:
     return questionary.select(
         "Select Effort Level:",
         choices=[
-            questionary.Choice("High (recommended)", "high"),
-            questionary.Choice("Medium (balanced)", "medium"),
-            questionary.Choice("Low (faster, cheaper)", "low"),
+            questionary.Choice(option.label, option.value)
+            for option in ANTHROPIC_EFFORT_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:cyan noinherit"),
@@ -272,8 +374,8 @@ def ask_gemini_thinking_config() -> str | None:
     return questionary.select(
         "Select Thinking Mode:",
         choices=[
-            questionary.Choice("Enable Thinking (recommended)", "high"),
-            questionary.Choice("Minimal/Disable Thinking", "minimal"),
+            questionary.Choice(option.label, option.value)
+            for option in GOOGLE_THINKING_LEVEL_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:green noinherit"),
@@ -288,18 +390,8 @@ def ask_output_language() -> str:
     choice = questionary.select(
         "Select Output Language:",
         choices=[
-            questionary.Choice("English (default)", "English"),
-            questionary.Choice("Chinese (中文)", "Chinese"),
-            questionary.Choice("Japanese (日本語)", "Japanese"),
-            questionary.Choice("Korean (한국어)", "Korean"),
-            questionary.Choice("Hindi (हिन्दी)", "Hindi"),
-            questionary.Choice("Spanish (Español)", "Spanish"),
-            questionary.Choice("Portuguese (Português)", "Portuguese"),
-            questionary.Choice("French (Français)", "French"),
-            questionary.Choice("German (Deutsch)", "German"),
-            questionary.Choice("Arabic (العربية)", "Arabic"),
-            questionary.Choice("Russian (Русский)", "Russian"),
-            questionary.Choice("Custom language", "custom"),
+            questionary.Choice(option.label, option.value)
+            for option in OUTPUT_LANGUAGE_OPTIONS
         ],
         style=questionary.Style([
             ("selected", "fg:yellow noinherit"),
